@@ -211,7 +211,7 @@ client.once(Events.ClientReady, async () => {
   };
   
   updateStatus();
-  setInterval(updateStatus, 300000);
+  setInterval(updateStatus, 10000);
   
   // Mensagem de inicialização no canal de logs
   try {
