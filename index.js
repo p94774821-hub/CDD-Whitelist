@@ -1,6 +1,6 @@
 // ============================================
 // BOT WHITELIST C.D.D - Cidade de Deus RP
-// SISTEMA COMPLETO - VERSÃO FINAL
+// SISTEMA COMPLETO FINAL - COM SELECT MENU
 // discord.js v14
 // ============================================
 
@@ -20,7 +20,9 @@ const {
   PermissionFlagsBits,
   Collection,
   Events,
-  MessageFlags
+  MessageFlags,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder
 } = require('discord.js');
 
 // ============================================
@@ -134,6 +136,62 @@ async function handleError(interaction, error) {
 }
 
 // ============================================
+// VERIFICAR E AVISAR SOBRE PERMISSÕES
+// ============================================
+async function checkBotPermissions(guild) {
+  const botMember = await guild.members.fetchMe();
+  const requiredPerms = [
+    PermissionFlagsBits.ManageRoles,
+    PermissionFlagsBits.ManageChannels,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.EmbedLinks,
+    PermissionFlagsBits.ViewChannel
+  ];
+  
+  const missingPerms = requiredPerms.filter(perm => !botMember.permissions.has(perm));
+  
+  if (missingPerms.length > 0) {
+    console.warn(`⚠️ Permissões faltando em ${guild.name}: ${missingPerms.map(p => Object.keys(PermissionFlagsBits).find(k => PermissionFlagsBits[k] === p)).join(', ')}`);
+    
+    // Tentar notificar no canal de logs
+    try {
+      const logChannel = await client.channels.fetch(config.whitelistLog);
+      if (logChannel) {
+        const warnEmbed = new EmbedBuilder()
+          .setColor('#FF0000')
+          .setTitle('⚠️ AVISO DE PERMISSÕES')
+          .setDescription(`O bot está sem permissões necessárias no servidor **${guild.name}**`)
+          .addFields({
+            name: 'Permissões Faltando',
+            value: missingPerms.map(p => {
+              const name = Object.keys(PermissionFlagsBits).find(k => PermissionFlagsBits[k] === p);
+              return `• ${name || p}`;
+            }).join('\n')
+          })
+          .setFooter({ text: 'Corrija as permissões para o funcionamento correto!' });
+        
+        await logChannel.send({ embeds: [warnEmbed] });
+      }
+    } catch (e) {
+      console.error('Erro ao enviar aviso de permissões:', e);
+    }
+  }
+  
+  // Verificar hierarquia de cargos
+  const approvedRole = await guild.roles.fetch(config.approvedRole).catch(() => null);
+  const pendingRole = await guild.roles.fetch(config.pendingRole).catch(() => null);
+  
+  if (approvedRole && botMember.roles.highest.position <= approvedRole.position) {
+    console.warn(`⚠️ O cargo do bot precisa estar ACIMA do cargo ${approvedRole.name} na hierarquia!`);
+  }
+  if (pendingRole && botMember.roles.highest.position <= pendingRole.position) {
+    console.warn(`⚠️ O cargo do bot precisa estar ACIMA do cargo ${pendingRole.name} na hierarquia!`);
+  }
+  
+  return missingPerms.length === 0;
+}
+
+// ============================================
 // EVENTO: BOT PRONTO
 // ============================================
 client.once(Events.ClientReady, async () => {
@@ -169,7 +227,7 @@ client.once(Events.ClientReady, async () => {
           { name: '📊 Status', value: '✅ Operacional', inline: true },
           { name: '🏙️ Cidade', value: 'Cidade de Deus', inline: true },
           { name: '⏰ Inicializado', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
-          { name: '📋 Versão', value: '3.0 Final', inline: true }
+          { name: '📋 Versão', value: '4.0 Final', inline: true }
         )
         .setThumbnail(client.user.displayAvatarURL())
         .setTimestamp()
@@ -184,8 +242,9 @@ client.once(Events.ClientReady, async () => {
   // Registrar comandos
   await registerSlashCommands();
   
-  // Criar embeds de whitelist em todos os servidores
+  // Verificar permissões e criar painéis
   for (const guild of client.guilds.cache.values()) {
+    await checkBotPermissions(guild);
     await createWhitelistPanel(guild);
   }
 });
@@ -223,6 +282,10 @@ async function registerSlashCommands() {
       {
         name: 'painel',
         description: '🎨 Recriar painel de whitelist (Apenas Owner)'
+      },
+      {
+        name: 'permissoes',
+        description: '🔧 Verificar permissões do bot (Apenas STAFF)'
       }
     ];
     
@@ -234,7 +297,7 @@ async function registerSlashCommands() {
 }
 
 // ============================================
-// CRIAR PAINEL DE WHITELIST
+// CRIAR PAINEL DE WHITELIST COM SELECT MENU
 // ============================================
 async function createWhitelistPanel(guild) {
   try {
@@ -262,7 +325,7 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
 
 **📋 COMO FUNCIONA:**
 
-📌 **1.** Clique no botão abaixo para iniciar seu ticket
+📌 **1.** Use o menu abaixo para iniciar seu ticket
 📌 **2.** Responda o formulário completo com atenção
 📌 **3.** Aguarde a análise da nossa equipe (até 48h)
 📌 **4.** Se aprovado, seja bem-vindo à cidade!
@@ -290,26 +353,16 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**🎯 O QUE AVALIAMOS:**
-
-💡 Conhecimento das regras
-💡 Maturidade para RP
-💡 Criatividade na lore
-💡 Capacidade de interpretação
-💡 Coerência nas respostas
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 **⏰ TEMPO DE RESPOSTA:**
 
 🕐 Análise em até **48 horas**
 📢 Você será notificado no privado
 🔄 Em caso de reprovação, pode tentar novamente após 1 hora
     `)
-      .setImage('https://i.imgur.com/YOUR_CITY_BANNER.png')
       .setThumbnail(guild.iconURL())
+      .setImage('https://i.imgur.com/YOUR_CITY_BANNER.png')
       .setFooter({ 
-        text: 'Cidade de Deus Roleplay • Sistema de Whitelist • v3.0',
+        text: 'Cidade de Deus Roleplay • Sistema de Whitelist • v4.0',
         iconURL: client.user.displayAvatarURL()
       })
       .setTimestamp();
@@ -320,48 +373,54 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
       .setTitle('📊 ESTATÍSTICAS DO SERVIDOR')
       .addFields(
         { name: '👥 Membros Totais', value: `${guild.memberCount}`, inline: true },
-        { name: '✅ Aprovados Hoje', value: `${statistics.approved}`, inline: true },
+        { name: '✅ Aprovados', value: `${statistics.approved}`, inline: true },
         { name: '⏳ Em Análise', value: `${activeTickets.size}`, inline: true },
         { name: '🏆 Taxa de Aprovação', value: `${calculateApprovalRate()}%`, inline: true },
         { name: '📋 Total de Whitelists', value: `${statistics.totalWhitelists}`, inline: true },
         { name: '❌ Reprovadas', value: `${statistics.rejected}`, inline: true }
       )
-      .setFooter({ text: 'Atualizado em tempo real' });
+      .setFooter({ text: 'Atualizado em tempo real • Selecione uma opção abaixo' });
 
-    // Botões
-    const startButton = new ButtonBuilder()
-      .setCustomId('start_whitelist_ticket')
-      .setLabel('📝 INICIAR WHITELIST')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('🌟');
+    // SELECT MENU PRINCIPAL
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('whitelist_main_menu')
+      .setPlaceholder('🔽 Selecione uma opção para continuar...')
+      .addOptions(
+        new StringSelectMenuOptionBuilder()
+          .setLabel('📝 Iniciar Whitelist')
+          .setDescription('Começar o processo de whitelist')
+          .setValue('start_whitelist')
+          .setEmoji('🌟'),
+        new StringSelectMenuOptionBuilder()
+          .setLabel('📜 Ver Regras')
+          .setDescription('Consultar as regras do servidor')
+          .setValue('view_rules')
+          .setEmoji('📋'),
+        new StringSelectMenuOptionBuilder()
+          .setLabel('🔍 Verificar Status')
+          .setDescription('Consultar o status da sua whitelist')
+          .setValue('check_status')
+          .setEmoji('📊'),
+        new StringSelectMenuOptionBuilder()
+          .setLabel('❓ Ajuda')
+          .setDescription('Obter ajuda sobre o sistema')
+          .setValue('help')
+          .setEmoji('💡'),
+        new StringSelectMenuOptionBuilder()
+          .setLabel('ℹ️ Informações')
+          .setDescription('Informações sobre o servidor')
+          .setValue('server_info')
+          .setEmoji('ℹ️')
+      );
 
-    const rulesButton = new ButtonBuilder()
-      .setCustomId('show_rules')
-      .setLabel('📜 REGRAS COMPLETAS')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('📋');
-
-    const statusButton = new ButtonBuilder()
-      .setCustomId('check_status')
-      .setLabel('🔍 VERIFICAR STATUS')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('📊');
-
-    const helpButton = new ButtonBuilder()
-      .setCustomId('whitelist_help')
-      .setLabel('❓ AJUDA')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('💡');
-
-    const row1 = new ActionRowBuilder().addComponents(startButton, rulesButton);
-    const row2 = new ActionRowBuilder().addComponents(statusButton, helpButton);
+    const row = new ActionRowBuilder().addComponents(selectMenu);
 
     await channel.send({
       embeds: [mainEmbed, statsEmbed],
-      components: [row1, row2]
+      components: [row]
     });
 
-    console.log(`✅ Painel criado em ${guild.name}`);
+    console.log(`✅ Painel com Select Menu criado em ${guild.name}`);
   } catch (error) {
     console.error(`Erro ao criar painel em ${guild.name}:`, error);
   }
@@ -374,6 +433,9 @@ client.on(Events.GuildCreate, async (guild) => {
   console.log(`📥 Bot adicionado ao servidor: ${guild.name}`);
   
   try {
+    // Verificar permissões
+    await checkBotPermissions(guild);
+    
     // Mensagem de boas-vindas no canal geral
     let targetChannel = guild.systemChannel;
     
@@ -388,15 +450,20 @@ client.on(Events.GuildCreate, async (guild) => {
       const welcomeEmbed = new EmbedBuilder()
         .setColor('#0099FF')
         .setTitle('🤖 BOT WHITELIST C.D.D - INSTALADO COM SUCESSO!')
-        .setDescription('**O sistema de whitelist está ativo e configurado!**')
-        .addFields(
-          { name: '📋 Comando Principal', value: '`/whitelist` - Iniciar processo', inline: true },
-          { name: '🎮 Comandos Prefix', value: '`!help` - Ver todos os comandos', inline: true },
-          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
-          { name: '📢 Próximo Passo', value: `Configure o canal <#${config.whitelistChannel}> para o painel`, inline: false }
-        )
+        .setDescription(`
+**O sistema de whitelist está ativo e configurado!**
+
+**⚠️ ATENÇÃO ÀS PERMISSÕES:**
+- O cargo do bot deve estar **ACIMA** dos cargos de whitelist na hierarquia
+- O bot precisa das permissões: Gerenciar Cargos, Gerenciar Canais, Enviar Mensagens
+
+**📋 Comandos:**
+- \`/whitelist\` - Iniciar processo
+- \`/permissoes\` - Verificar permissões (STAFF)
+- \`!help\` - Ver todos os comandos
+        `)
         .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({ text: 'Sistema Profissional de Whitelist • v3.0' })
+        .setFooter({ text: 'Sistema Profissional de Whitelist • v4.0' })
         .setTimestamp();
       
       await targetChannel.send({ embeds: [welcomeEmbed] });
@@ -437,12 +504,80 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleButtonInteraction(interaction);
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction);
+    } else if (interaction.isStringSelectMenu()) {
+      await handleSelectMenu(interaction);
     }
   } catch (error) {
     console.error('Erro na interação:', error);
     await handleError(interaction, error);
   }
 });
+
+// ============================================
+// HANDLER: SELECT MENU
+// ============================================
+async function handleSelectMenu(interaction) {
+  const selectedValue = interaction.values[0];
+  
+  switch (selectedValue) {
+    case 'start_whitelist':
+      await safeDeferReply(interaction);
+      await handleWhitelistCommand(interaction);
+      break;
+      
+    case 'view_rules':
+      const rulesEmbed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
+        .setDescription('**Leia atentamente todas as regras!**')
+        .addFields(
+          { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito ou discriminação\n• Proibido qualquer tipo de assédio' },
+          { name: '🎭 REGRAS DE RP', value: '• **RDM** - PROIBIDO\n• **VDM** - PROIBIDO\n• **Metagaming** - PROIBIDO\n• **Powergaming** - PROIBIDO\n• **Combat Logging** - PROIBIDO' },
+          { name: '⚠️ PUNIÇÕES', value: '1ª - Aviso\n2ª - Kick\n3ª - Ban Temporário\n4ª - Ban Permanente' }
+        )
+        .setFooter({ text: 'O descumprimento das regras resultará em punições' });
+      
+      await interaction.reply({ embeds: [rulesEmbed], flags: MessageFlags.Ephemeral });
+      break;
+      
+    case 'check_status':
+      await handleStatusCommand(interaction);
+      break;
+      
+    case 'help':
+      const helpEmbed = new EmbedBuilder()
+        .setColor('#0099FF')
+        .setTitle('❓ AJUDA - WHITELIST')
+        .setDescription('**Como funciona o sistema de whitelist:**')
+        .addFields(
+          { name: '📋 Etapas', value: '1. Regras de RP\n2. Raciocínio Lógico\n3. Lore do Personagem' },
+          { name: '⏰ Tempo', value: 'Análise em até 48 horas' },
+          { name: '🔄 Reprovação', value: 'Pode tentar novamente após 1 hora' },
+          { name: '📢 Comando', value: 'Use `/whitelist` para começar' }
+        );
+      
+      await interaction.reply({ embeds: [helpEmbed], flags: MessageFlags.Ephemeral });
+      break;
+      
+    case 'server_info':
+      const infoEmbed = new EmbedBuilder()
+        .setColor('#4169E1')
+        .setTitle('🌆 CIDADE DE DEUS ROLEPLAY')
+        .setDescription('**O maior servidor de Roleplay do Brasil!**')
+        .addFields(
+          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
+          { name: '👥 Membros', value: `${interaction.guild.memberCount}`, inline: true },
+          { name: '📅 Criado em', value: `<t:${Math.floor(interaction.guild.createdTimestamp / 1000)}:D>`, inline: true },
+          { name: '🎮 Sistema', value: 'Whitelist Obrigatória', inline: true },
+          { name: '⏰ Análise', value: 'Até 48 horas', inline: true }
+        )
+        .setThumbnail(interaction.guild.iconURL())
+        .setFooter({ text: 'Junte-se a nós e faça história!' });
+      
+      await interaction.reply({ embeds: [infoEmbed], flags: MessageFlags.Ephemeral });
+      break;
+  }
+}
 
 // ============================================
 // HANDLER: SLASH COMMANDS
@@ -452,6 +587,7 @@ async function handleSlashCommand(interaction) {
   
   switch (command) {
     case 'whitelist':
+      await safeDeferReply(interaction);
       await handleWhitelistCommand(interaction);
       break;
     case 'status':
@@ -472,18 +608,91 @@ async function handleSlashCommand(interaction) {
     case 'painel':
       await handlePanelCommand(interaction);
       break;
+    case 'permissoes':
+      await handlePermissionsCommand(interaction);
+      break;
   }
 }
 
 // ============================================
-// COMANDO: WHITELIST
+// COMANDO: VERIFICAR PERMISSÕES
 // ============================================
-async function handleWhitelistCommand(interaction) {
+async function handlePermissionsCommand(interaction) {
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  
+  if (!member.roles.cache.has(config.staffRole) && interaction.user.id !== config.ownerId) {
+    return interaction.reply({
+      content: '❌ Apenas STAFF pode usar este comando.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
   await safeDeferReply(interaction);
   
+  const botMember = await interaction.guild.members.fetchMe();
+  const approvedRole = await interaction.guild.roles.fetch(config.approvedRole).catch(() => null);
+  const pendingRole = await interaction.guild.roles.fetch(config.pendingRole).catch(() => null);
+  const staffRole = await interaction.guild.roles.fetch(config.staffRole).catch(() => null);
+  
+  const permsEmbed = new EmbedBuilder()
+    .setColor('#FFA500')
+    .setTitle('🔧 VERIFICAÇÃO DE PERMISSÕES')
+    .addFields(
+      { 
+        name: '📊 Hierarquia de Cargos', 
+        value: `
+**Bot:** Posição ${botMember.roles.highest.position}
+**STAFF:** ${staffRole ? `Posição ${staffRole.position}` : '❌ Não encontrado'}
+**Aprovado:** ${approvedRole ? `Posição ${approvedRole.position}` : '❌ Não encontrado'}
+**Pendente:** ${pendingRole ? `Posição ${pendingRole.position}` : '❌ Não encontrado'}
+        `,
+        inline: false
+      },
+      {
+        name: '✅ Status',
+        value: `
+${botMember.roles.highest.position > (approvedRole?.position || 0) ? '✅' : '❌'} Bot acima do cargo Aprovado
+${botMember.roles.highest.position > (pendingRole?.position || 0) ? '✅' : '❌'} Bot acima do cargo Pendente
+${botMember.permissions.has(PermissionFlagsBits.ManageRoles) ? '✅' : '❌'} Gerenciar Cargos
+${botMember.permissions.has(PermissionFlagsBits.ManageChannels) ? '✅' : '❌'} Gerenciar Canais
+${botMember.permissions.has(PermissionFlagsBits.Administrator) ? '✅' : '❌'} Administrador
+        `,
+        inline: false
+      }
+    )
+    .setFooter({ text: '❌ = Problema detectado. Corrija as permissões!' });
+  
+  await interaction.editReply({ embeds: [permsEmbed] });
+}
+
+// ============================================
+// COMANDO: WHITELIST (CORRIGIDO COM VERIFICAÇÃO DE PERMISSÕES)
+// ============================================
+async function handleWhitelistCommand(interaction) {
   const userId = interaction.user.id;
   const guild = interaction.guild;
   const member = await guild.members.fetch(userId);
+  
+  // Verificar permissões do bot primeiro
+  const botMember = await guild.members.fetchMe();
+  const approvedRole = await guild.roles.fetch(config.approvedRole).catch(() => null);
+  const pendingRole = await guild.roles.fetch(config.pendingRole).catch(() => null);
+  
+  if (approvedRole && botMember.roles.highest.position <= approvedRole.position) {
+    return interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor('#FF0000')
+          .setTitle('❌ ERRO DE CONFIGURAÇÃO')
+          .setDescription('O bot não tem permissão para gerenciar os cargos de whitelist.')
+          .addFields({
+            name: '🔧 Solução',
+            value: 'O cargo do bot precisa estar **ACIMA** do cargo de whitelist aprovado na hierarquia do servidor.'
+          })
+          .setFooter({ text: 'Contate um administrador para corrigir.' })
+      ]
+    });
+  }
   
   // Já aprovado
   if (member.roles.cache.has(config.approvedRole)) {
@@ -571,11 +780,22 @@ async function handleWhitelistCommand(interaction) {
       ]
     });
     
-    // Adicionar cargo pendente
-    try {
-      await member.roles.add(config.pendingRole);
-    } catch (error) {
-      console.error('Erro ao adicionar cargo:', error);
+    // Adicionar cargo pendente (com verificação)
+    if (pendingRole) {
+      try {
+        await member.roles.add(pendingRole);
+      } catch (error) {
+        console.error('Erro ao adicionar cargo pendente:', error);
+        // Notificar no canal
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor('#FFA500')
+              .setTitle('⚠️ Aviso')
+              .setDescription('Não foi possível adicionar o cargo pendente. A equipe foi notificada.')
+          ]
+        });
+      }
     }
     
     // Mensagem de boas-vindas no ticket
@@ -678,7 +898,7 @@ async function handleStatusCommand(interaction) {
         .setColor('#0099FF')
         .setTitle('📋 NENHUMA WHITELIST ATIVA')
         .setDescription('Você não possui nenhuma whitelist em andamento.')
-        .addFields({ name: '🌟 Iniciar', value: 'Use `/whitelist` para começar' })
+        .addFields({ name: '🌟 Iniciar', value: 'Use o menu no canal de whitelist ou `/whitelist`' })
     ],
     flags: MessageFlags.Ephemeral
   });
@@ -887,15 +1107,19 @@ client.on(Events.MessageCreate, async (message) => {
         .addFields(
           { 
             name: '📋 **COMANDOS SLASH**', 
-            value: '`/whitelist` - Iniciar whitelist\n`/status` - Verificar status\n`/fechar` - Fechar ticket (STAFF)\n`/revisar` - Listar pendentes (STAFF)\n`/estatisticas` - Estatísticas (STAFF)' 
+            value: '`/whitelist` - Iniciar whitelist\n`/status` - Verificar status\n`/permissoes` - Verificar permissões (STAFF)\n`/fechar` - Fechar ticket (STAFF)\n`/revisar` - Listar pendentes (STAFF)\n`/estatisticas` - Estatísticas (STAFF)' 
           },
           { 
             name: '🔧 **COMANDOS PREFIX (!)**', 
-            value: '`!ping` - Latência\n`!status` - Status do sistema\n`!help` - Esta mensagem\n`!regras` - Regras do servidor\n`!info` - Informações' 
+            value: '`!ping` - Latência\n`!status` - Status do sistema\n`!help` - Esta mensagem\n`!regras` - Regras do servidor' 
+          },
+          {
+            name: '⚠️ **PERMISSÕES NECESSÁRIAS**',
+            value: '• O cargo do bot deve estar **ACIMA** dos cargos de whitelist\n• Gerenciar Cargos\n• Gerenciar Canais'
           }
         )
         .setThumbnail(message.guild.iconURL())
-        .setFooter({ text: 'C.D.D Roleplay • v3.0' });
+        .setFooter({ text: 'C.D.D Roleplay • v4.0' });
       await message.reply({ embeds: [helpEmbed] });
       break;
       
@@ -905,78 +1129,24 @@ client.on(Events.MessageCreate, async (message) => {
         .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
         .setDescription('**Leia atentamente todas as regras!**')
         .addFields(
-          { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito ou discriminação\n• Proibido qualquer tipo de assédio' },
-          { name: '🎭 REGRAS DE RP', value: '• **RDM** - PROIBIDO\n• **VDM** - PROIBIDO\n• **Metagaming** - PROIBIDO\n• **Powergaming** - PROIBIDO\n• **Combat Logging** - PROIBIDO' },
+          { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito ou discriminação' },
+          { name: '🎭 REGRAS DE RP', value: '• RDM - PROIBIDO\n• VDM - PROIBIDO\n• Metagaming - PROIBIDO\n• Powergaming - PROIBIDO' },
           { name: '⚠️ PUNIÇÕES', value: '1ª - Aviso\n2ª - Kick\n3ª - Ban Temporário\n4ª - Ban Permanente' }
-        )
-        .setFooter({ text: 'O descumprimento das regras resultará em punições' });
+        );
       await message.reply({ embeds: [rulesEmbed] });
-      break;
-      
-    case 'info':
-      const infoEmbed = new EmbedBuilder()
-        .setColor('#4169E1')
-        .setTitle('🌆 CIDADE DE DEUS ROLEPLAY')
-        .setDescription('**O maior servidor de Roleplay do Brasil!**')
-        .addFields(
-          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
-          { name: '👥 Membros', value: `${message.guild.memberCount}`, inline: true },
-          { name: '📅 Criado em', value: `<t:${Math.floor(message.guild.createdTimestamp / 1000)}:D>`, inline: true },
-          { name: '🌟 Boost', value: `Nível ${message.guild.premiumTier}`, inline: true },
-          { name: '🎮 Sistema', value: 'Whitelist Obrigatória', inline: true },
-          { name: '⏰ Análise', value: 'Até 48 horas', inline: true }
-        )
-        .setFooter({ text: 'Junte-se a nós e faça história!' });
-      await message.reply({ embeds: [infoEmbed] });
       break;
   }
 });
 
 // ============================================
-// HANDLER: BOTÕES
+// HANDLER: BOTÕES (TICKET)
 // ============================================
 async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const userId = interaction.user.id;
   
-  // Painel Principal - Iniciar Whitelist
-  if (customId === 'start_whitelist_ticket') {
-    await safeDeferReply(interaction);
-    await handleWhitelistCommand(interaction);
-  }
-  
-  // Painel Principal - Regras
-  else if (customId === 'show_rules') {
-    const embed = new EmbedBuilder()
-      .setColor('#FF0000')
-      .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
-      .addFields(
-        { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito' },
-        { name: '🎭 REGRAS DE RP', value: '• RDM - PROIBIDO\n• VDM - PROIBIDO\n• Metagaming - PROIBIDO\n• Powergaming - PROIBIDO' }
-      );
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
-  }
-  
-  // Painel Principal - Status
-  else if (customId === 'check_status') {
-    await handleStatusCommand(interaction);
-  }
-  
-  // Painel Principal - Ajuda
-  else if (customId === 'whitelist_help') {
-    const embed = new EmbedBuilder()
-      .setColor('#0099FF')
-      .setTitle('❓ AJUDA - WHITELIST')
-      .setDescription('Use `/whitelist` para iniciar o processo.')
-      .addFields(
-        { name: '📋 Etapas', value: '1. Regras de RP\n2. Raciocínio Lógico\n3. Lore do Personagem' },
-        { name: '⏰ Tempo', value: 'Análise em até 48 horas' }
-      );
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
-  }
-  
   // Ticket - Iniciar Formulário
-  else if (customId === 'start_whitelist_form') {
+  if (customId === 'start_whitelist_form') {
     const session = whitelistSessions.get(userId);
     if (!session) {
       return interaction.reply({ content: '❌ Sessão não encontrada.', flags: MessageFlags.Ephemeral });
@@ -1490,6 +1660,27 @@ async function handleStaffDecision(interaction) {
   const isApproving = interaction.customId.startsWith('approve_');
   const targetUserId = interaction.customId.split('_')[1];
   
+  // Verificar permissões do bot
+  const botMember = await interaction.guild.members.fetchMe();
+  const approvedRole = await interaction.guild.roles.fetch(config.approvedRole).catch(() => null);
+  const pendingRole = await interaction.guild.roles.fetch(config.pendingRole).catch(() => null);
+  
+  if (isApproving && approvedRole && botMember.roles.highest.position <= approvedRole.position) {
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor('#FF0000')
+          .setTitle('❌ ERRO DE PERMISSÃO')
+          .setDescription('O bot não tem permissão para adicionar o cargo de aprovado.')
+          .addFields({
+            name: '🔧 Solução',
+            value: 'O cargo do bot precisa estar **ACIMA** do cargo de whitelist aprovado na hierarquia.'
+          })
+      ],
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
   try {
     const targetMember = await interaction.guild.members.fetch(targetUserId);
     const session = whitelistSessions.get(targetUserId);
@@ -1521,11 +1712,24 @@ async function handleStaffDecision(interaction) {
     statistics.approved++;
     statistics.pending = activeTickets.size - 1;
     
-    try {
-      await targetMember.roles.remove(config.pendingRole);
-      await targetMember.roles.add(config.approvedRole);
-    } catch (error) {
-      console.error('Erro ao gerenciar cargos:', error);
+    if (pendingRole) {
+      try {
+        await targetMember.roles.remove(pendingRole);
+      } catch (error) {
+        console.error('Erro ao remover cargo pendente:', error);
+      }
+    }
+    
+    if (approvedRole) {
+      try {
+        await targetMember.roles.add(approvedRole);
+      } catch (error) {
+        console.error('Erro ao adicionar cargo aprovado:', error);
+        return interaction.followUp({
+          content: '❌ Erro ao adicionar cargo de aprovado. Verifique as permissões do bot.',
+          flags: MessageFlags.Ephemeral
+        });
+      }
     }
     
     const approvedEmbed = new EmbedBuilder()
@@ -1608,10 +1812,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       statistics.rejected++;
       statistics.pending = activeTickets.size - 1;
       
-      try {
-        await targetMember.roles.remove(config.pendingRole);
-      } catch (error) {
-        console.error('Erro ao remover cargo:', error);
+      const pendingRole = await interaction.guild.roles.fetch(config.pendingRole).catch(() => null);
+      if (pendingRole) {
+        try {
+          await targetMember.roles.remove(pendingRole);
+        } catch (error) {
+          console.error('Erro ao remover cargo:', error);
+        }
       }
       
       const rejectedEmbed = new EmbedBuilder()
@@ -1716,11 +1923,12 @@ module.exports = { client, config, activeTickets, whitelistSessions, statistics 
 console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║                                                                  ║
-║         🤖 BOT WHITELIST C.D.D - CIDADE DE DEUS RP v3.0          ║
+║         🤖 BOT WHITELIST C.D.D - CIDADE DE DEUS RP v4.0          ║
 ║                    SISTEMA COMPLETO FINAL                        ║
 ║                                                                  ║
 ║         ✅ Discord.js v14                                        ║
-║         ✅ Painel de Whitelist Automático                        ║
+║         ✅ Select Menu no Painel Principal                       ║
+║         ✅ Verificação de Permissões                             ║
 ║         ✅ Sistema de Tickets                                    ║
 ║         ✅ Formulário 3 Etapas                                   ║
 ║         ✅ Aprovação/Reprovação STAFF                            ║
@@ -1734,4 +1942,7 @@ console.log(`
 ║         📋 Pronto para Produção                                  ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
+
+⚠️  VERIFICAÇÃO DE PERMISSÕES ATIVADA!
+💡 Use /permissoes para verificar se o bot está configurado corretamente.
 `);
