@@ -192,7 +192,7 @@ client.once(Events.ClientReady, async () => {
     const activities = [
       { name: '🌆 Cidade de Deus RP', type: 3 },
       { name: `${activeTickets.size} whitelists ativas`, type: 3 },
-      { name: '/whitelist para começar', type: 2 },
+      { name: '𝙼𝚊𝚍𝚎 𝚋𝚢 𝚈𝟸𝚔_𝙽𝚊𝚝', type: 2 },
       { name: `🏆 ${statistics.approved} aprovados`, type: 3 }
     ];
     const activity = activities[Math.floor(Math.random() * activities.length)];
@@ -200,7 +200,7 @@ client.once(Events.ClientReady, async () => {
   };
   
   updateStatus();
-  setInterval(updateStatus, 300000);
+  setInterval(updateStatus, 5000);
   
   // Mensagem de inicialização no canal de logs
   try {
@@ -348,12 +348,12 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
 📢 Você será notificado no privado
 🔄 Em caso de reprovação, pode tentar novamente após 1 hora
     `)
-      .setThumbnail(guild.iconURL())
       .setFooter({ 
-        text: 'Cidade de Deus Roleplay • Sistema de Whitelist • v5.0',
-        iconURL: client.user.displayAvatarURL()
-      })
-      .setTimestamp();
+  text: 'Cidade de Deus Roleplay • Sistema de Whitelist • v5.0',
+  iconURL: client.user.displayAvatarURL()
+})
+.setImage('https://criminal-emerald-khsklnrwda.edgeone.app/file_000000001f94720eb81e748bf079065a.png')
+.setTimestamp();
 
     // SELECT MENU PRINCIPAL
     const selectMenu = new StringSelectMenuBuilder()
@@ -450,7 +450,7 @@ client.on(Events.GuildCreate, async (guild) => {
         .addFields(
           { name: '🌐 Servidor', value: guild.name, inline: true },
           { name: '👥 Membros', value: `${guild.memberCount}`, inline: true },
-          { name: '👑 Dono', value: `<@${guild.ownerId}>`, inline: true }
+          { name: '🛠 Dono do Sistema', value: `<@${guild.ownerId}>`, inline: true }
         )
         .setTimestamp();
       
@@ -709,7 +709,7 @@ async function handleWhitelistCommand(interaction) {
       return interaction.editReply({ content: '❌ Categoria não configurada.' });
     }
     
-    const channelName = `🎫-whitelist-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const channelName = `🎫 • whitelist •${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     
     const channel = await guild.channels.create({
       name: channelName,
@@ -878,7 +878,7 @@ async function handleCloseCommand(interaction) {
   
   const channel = interaction.channel;
   
-  if (!channel.name.startsWith('🎫-whitelist-')) {
+  if (!channel.name.startsWith('🎫 • whitelist •')) {
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Canal Inválido')],
       flags: MessageFlags.Ephemeral
@@ -1017,7 +1017,7 @@ async function handleCleanCommand(interaction) {
 async function handlePanelCommand(interaction) {
   if (interaction.user.id !== config.ownerId) {
     return interaction.reply({
-      content: '❌ Apenas o Owner pode usar este comando.',
+      content: '❌ Apenas o Dono do Sistema pode usar este comando.',
       flags: MessageFlags.Ephemeral
     });
   }
