@@ -1,7 +1,7 @@
 // ============================================
 // BOT WHITELIST C.D.D - Cidade de Deus RP
-// Sistema completo de whitelist automatizado
-// discord.js v14 - Versão Corrigida
+// SISTEMA COMPLETO - VERSÃO FINAL
+// discord.js v14
 // ============================================
 
 require('dotenv').config();
@@ -20,7 +20,6 @@ const {
   PermissionFlagsBits,
   Collection,
   Events,
-  AttachmentBuilder,
   MessageFlags
 } = require('discord.js');
 
@@ -41,7 +40,7 @@ for (const envVar of requiredEnvVars) {
 }
 
 // ============================================
-// CONFIGURAÇÕES DO BOT
+// CONFIGURAÇÕES
 // ============================================
 const config = {
   token: process.env.TOKEN,
@@ -56,7 +55,7 @@ const config = {
 };
 
 // ============================================
-// CLIENTE DO DISCORD
+// CLIENTE
 // ============================================
 const client = new Client({
   intents: [
@@ -72,16 +71,11 @@ const client = new Client({
 });
 
 // ============================================
-// COLETORES E CACHE
+// CACHE E COLETORES
 // ============================================
 const activeTickets = new Collection();
 const whitelistSessions = new Collection();
 const cooldowns = new Collection();
-const ticketMessageId = new Collection();
-
-// ============================================
-// SISTEMA DE ESTATÍSTICAS
-// ============================================
 const statistics = {
   totalWhitelists: 0,
   approved: 0,
@@ -90,32 +84,52 @@ const statistics = {
 };
 
 // ============================================
-// FUNÇÃO AUXILIAR PARA REPLY SEGURO
+// FUNÇÕES AUXILIARES
 // ============================================
-async function safeReply(interaction, options) {
-  try {
-    if (interaction.replied || interaction.deferred) {
-      return await interaction.followUp(options);
-    } else {
-      return await interaction.reply(options);
-    }
-  } catch (error) {
-    console.error('Erro ao responder interação:', error);
-    return null;
-  }
+function formatUptime(uptime) {
+  const days = Math.floor(uptime / 86400000);
+  const hours = Math.floor(uptime / 3600000) % 24;
+  const minutes = Math.floor(uptime / 60000) % 60;
+  const seconds = Math.floor(uptime / 1000) % 60;
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
 
-// ============================================
-// FUNÇÃO AUXILIAR PARA DEFER REPLY
-// ============================================
+function calculateApprovalRate() {
+  const total = statistics.approved + statistics.rejected;
+  if (total === 0) return 100;
+  return Math.round((statistics.approved / total) * 100);
+}
+
 async function safeDeferReply(interaction, ephemeral = true) {
   try {
     if (!interaction.deferred && !interaction.replied) {
       const flags = ephemeral ? MessageFlags.Ephemeral : undefined;
       await interaction.deferReply({ flags });
+      return true;
     }
+    return false;
   } catch (error) {
-    console.error('Erro ao deferir reply:', error);
+    console.error('Erro ao deferir:', error);
+    return false;
+  }
+}
+
+async function handleError(interaction, error) {
+  console.error('Erro tratado:', error);
+  try {
+    const errorMessage = {
+      content: '❌ Ocorreu um erro ao processar sua solicitação.',
+      flags: MessageFlags.Ephemeral
+    };
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply(errorMessage);
+    } else if (interaction.deferred) {
+      await interaction.editReply(errorMessage);
+    } else {
+      await interaction.followUp(errorMessage);
+    }
+  } catch (e) {
+    console.error('Erro ao enviar mensagem de erro:', e);
   }
 }
 
@@ -123,25 +137,43 @@ async function safeDeferReply(interaction, ephemeral = true) {
 // EVENTO: BOT PRONTO
 // ============================================
 client.once(Events.ClientReady, async () => {
-  console.log(`✅ ${client.user.tag} está online!`);
+  console.log('✅ Bot online!');
   console.log(`📊 Servindo ${client.guilds.cache.size} servidores`);
   
-  updateBotStatus();
-  setInterval(updateBotStatus, 300000);
+  // Status dinâmico
+  const updateStatus = () => {
+    const activities = [
+      { name: '🌆 Cidade de Deus RP', type: 3 },
+      { name: `${activeTickets.size} whitelists ativas`, type: 3 },
+      { name: '/whitelist para começar', type: 2 },
+      { name: `🏆 ${statistics.approved} aprovados`, type: 3 }
+    ];
+    const activity = activities[Math.floor(Math.random() * activities.length)];
+    client.user.setActivity(activity.name, { type: activity.type });
+  };
   
+  updateStatus();
+  setInterval(updateStatus, 300000);
+  
+  // Mensagem de inicialização no canal de logs
   try {
     const logChannel = await client.channels.fetch(config.whitelistLog);
     if (logChannel) {
       const embed = new EmbedBuilder()
         .setColor('#00FF00')
-        .setTitle('🟢 Bot Online - Cidade de Deus RP')
+        .setTitle('🟢 BOT ONLINE - CIDADE DE DEUS RP')
         .setDescription('**Sistema de Whitelist ativo e operacional**')
         .addFields(
           { name: '🤖 Bot', value: client.user.tag, inline: true },
           { name: '🌐 Servidores', value: `${client.guilds.cache.size}`, inline: true },
-          { name: '📊 Status', value: '✅ Operacional', inline: true }
+          { name: '📊 Status', value: '✅ Operacional', inline: true },
+          { name: '🏙️ Cidade', value: 'Cidade de Deus', inline: true },
+          { name: '⏰ Inicializado', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+          { name: '📋 Versão', value: '3.0 Final', inline: true }
         )
-        .setTimestamp();
+        .setThumbnail(client.user.displayAvatarURL())
+        .setTimestamp()
+        .setFooter({ text: 'C.D.D Roleplay - Sistema Profissional de Whitelist' });
       
       await logChannel.send({ embeds: [embed] });
     }
@@ -149,147 +181,12 @@ client.once(Events.ClientReady, async () => {
     console.error('Erro ao enviar mensagem de inicialização:', error);
   }
   
+  // Registrar comandos
   await registerSlashCommands();
-  await setupWhitelistEmbeds();
-});
-
-// ============================================
-// ATUALIZAR STATUS DO BOT
-// ============================================
-function updateBotStatus() {
-  const activities = [
-    { name: '🌆 Cidade de Deus RP', type: 3 },
-    { name: `${activeTickets.size} whitelists ativas`, type: 3 },
-    { name: '/whitelist para começar', type: 2 }
-  ];
   
-  const activity = activities[Math.floor(Math.random() * activities.length)];
-  client.user.setActivity(activity.name, { type: activity.type });
-}
-
-// ============================================
-// CONFIGURAR EMBEDS DE WHITELIST
-// ============================================
-async function setupWhitelistEmbeds() {
+  // Criar embeds de whitelist em todos os servidores
   for (const guild of client.guilds.cache.values()) {
-    try {
-      const channel = await guild.channels.fetch(config.whitelistChannel).catch(() => null);
-      if (!channel) continue;
-      
-      const messages = await channel.messages.fetch({ limit: 10 });
-      const existingEmbed = messages.find(m => 
-        m.author.id === client.user.id && 
-        m.embeds.length > 0
-      );
-      
-      if (!existingEmbed) {
-        await createWhitelistEmbed(channel);
-      } else {
-        ticketMessageId.set(guild.id, existingEmbed.id);
-      }
-    } catch (error) {
-      console.error(`Erro ao configurar embed em ${guild.name}:`, error);
-    }
-  }
-}
-
-// ============================================
-// CRIAR EMBED DE WHITELIST
-// ============================================
-async function createWhitelistEmbed(channel) {
-  const mainEmbed = new EmbedBuilder()
-    .setColor('#FFD700')
-    .setTitle('🌟 SISTEMA DE WHITELIST - CIDADE DE DEUS RP 🌟')
-    .setDescription(`
-**🌆 Bem-vindo ao processo seletivo da Cidade de Deus!**
-
-Para fazer parte da nossa comunidade, você precisa passar pelo nosso sistema de whitelist.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**📋 COMO FUNCIONA:**
-
-📌 **1.** Clique no botão abaixo para iniciar
-📌 **2.** Responda o formulário completo
-📌 **3.** Aguarde a análise da nossa equipe
-📌 **4.** Se aprovado, seja bem-vindo à cidade!
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**⚠️ REQUISITOS IMPORTANTES:**
-
-✅ Ter mais de 16 anos
-✅ Ler e concordar com todas as regras
-✅ Responder o formulário com sinceridade
-✅ Ter maturidade para o Roleplay
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**📚 REGRAS PRINCIPAIS:**
-
-🔹 **RDM** (Random Deathmatch) - PROIBIDO
-🔹 **VDM** (Vehicle Deathmatch) - PROIBIDO
-🔹 **Metagaming** - PROIBIDO
-🔹 **Powergaming** - PROIBIDO
-🔹 Respeito acima de tudo
-    `)
-    .setFooter({ text: 'Cidade de Deus Roleplay • Sistema de Whitelist' })
-    .setTimestamp();
-
-  const startButton = new ButtonBuilder()
-    .setCustomId('start_whitelist_ticket')
-    .setLabel('📝 INICIAR WHITELIST')
-    .setStyle(ButtonStyle.Success)
-    .setEmoji('🌟');
-
-  const rulesButton = new ButtonBuilder()
-    .setCustomId('show_rules')
-    .setLabel('📜 REGRAS')
-    .setStyle(ButtonStyle.Secondary);
-
-  const statusButton = new ButtonBuilder()
-    .setCustomId('check_status')
-    .setLabel('🔍 STATUS')
-    .setStyle(ButtonStyle.Primary);
-
-  const helpButton = new ButtonBuilder()
-    .setCustomId('whitelist_help')
-    .setLabel('❓ AJUDA')
-    .setStyle(ButtonStyle.Secondary);
-
-  const row1 = new ActionRowBuilder().addComponents(startButton, rulesButton);
-  const row2 = new ActionRowBuilder().addComponents(statusButton, helpButton);
-
-  const message = await channel.send({
-    embeds: [mainEmbed],
-    components: [row1, row2]
-  });
-  
-  ticketMessageId.set(channel.guild.id, message.id);
-}
-
-// ============================================
-// CALCULAR TAXA DE APROVAÇÃO
-// ============================================
-function calculateApprovalRate() {
-  const total = statistics.approved + statistics.rejected;
-  if (total === 0) return 100;
-  return Math.round((statistics.approved / total) * 100);
-}
-
-// ============================================
-// EVENTO: GUILD CREATE
-// ============================================
-client.on(Events.GuildCreate, async (guild) => {
-  console.log(`📥 Bot adicionado ao servidor: ${guild.name}`);
-  
-  try {
-    const whitelistChannel = await guild.channels.fetch(config.whitelistChannel).catch(() => null);
-    if (whitelistChannel) {
-      await createWhitelistEmbed(whitelistChannel);
-    }
-  } catch (error) {
-    console.error('Erro ao configurar novo servidor:', error);
+    await createWhitelistPanel(guild);
   }
 });
 
@@ -304,16 +201,16 @@ async function registerSlashCommands() {
         description: '📋 Iniciar processo de whitelist para Cidade de Deus RP'
       },
       {
+        name: 'status',
+        description: '📊 Verificar status da sua whitelist'
+      },
+      {
         name: 'fechar',
         description: '🔒 Fechar ticket de whitelist (Apenas STAFF)'
       },
       {
-        name: 'status',
-        description: '📊 Verificar status de uma whitelist'
-      },
-      {
         name: 'revisar',
-        description: '📝 Revisar whitelists pendentes (Apenas STAFF)'
+        description: '📝 Listar whitelists pendentes (Apenas STAFF)'
       },
       {
         name: 'estatisticas',
@@ -322,6 +219,10 @@ async function registerSlashCommands() {
       {
         name: 'limpar',
         description: '🧹 Limpar tickets inativos (Apenas STAFF)'
+      },
+      {
+        name: 'painel',
+        description: '🎨 Recriar painel de whitelist (Apenas Owner)'
       }
     ];
     
@@ -331,6 +232,199 @@ async function registerSlashCommands() {
     console.error('❌ Erro ao registrar comandos:', error);
   }
 }
+
+// ============================================
+// CRIAR PAINEL DE WHITELIST
+// ============================================
+async function createWhitelistPanel(guild) {
+  try {
+    const channel = await guild.channels.fetch(config.whitelistChannel).catch(() => null);
+    if (!channel) return;
+    
+    // Limpar mensagens antigas do bot
+    const messages = await channel.messages.fetch({ limit: 20 });
+    const botMessages = messages.filter(m => m.author.id === client.user.id);
+    for (const msg of botMessages.values()) {
+      await msg.delete().catch(() => {});
+    }
+    
+    // Embed Principal
+    const mainEmbed = new EmbedBuilder()
+      .setColor('#FFD700')
+      .setTitle('🌟 SISTEMA DE WHITELIST - CIDADE DE DEUS RP 🌟')
+      .setDescription(`
+**🌆 Bem-vindo ao processo seletivo da Cidade de Deus!**
+
+Para fazer parte da nossa comunidade, você precisa passar pelo nosso sistema de whitelist. 
+Este processo garante que todos os membros estejam alinhados com nossas regras e filosofia de Roleplay.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**📋 COMO FUNCIONA:**
+
+📌 **1.** Clique no botão abaixo para iniciar seu ticket
+📌 **2.** Responda o formulário completo com atenção
+📌 **3.** Aguarde a análise da nossa equipe (até 48h)
+📌 **4.** Se aprovado, seja bem-vindo à cidade!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**⚠️ REQUISITOS IMPORTANTES:**
+
+✅ Ter mais de 16 anos
+✅ Ler e concordar com todas as regras
+✅ Responder o formulário com sinceridade
+✅ Ter maturidade para o Roleplay
+✅ Respeitar todos os jogadores
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**📚 REGRAS PRINCIPAIS:**
+
+🔹 **RDM** (Random Deathmatch) - PROIBIDO
+🔹 **VDM** (Vehicle Deathmatch) - PROIBIDO
+🔹 **Metagaming** - PROIBIDO
+🔹 **Powergaming** - PROIBIDO
+🔹 **Combat Logging** - PROIBIDO
+🔹 Respeito acima de tudo
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**🎯 O QUE AVALIAMOS:**
+
+💡 Conhecimento das regras
+💡 Maturidade para RP
+💡 Criatividade na lore
+💡 Capacidade de interpretação
+💡 Coerência nas respostas
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**⏰ TEMPO DE RESPOSTA:**
+
+🕐 Análise em até **48 horas**
+📢 Você será notificado no privado
+🔄 Em caso de reprovação, pode tentar novamente após 1 hora
+    `)
+      .setImage('https://i.imgur.com/YOUR_CITY_BANNER.png')
+      .setThumbnail(guild.iconURL())
+      .setFooter({ 
+        text: 'Cidade de Deus Roleplay • Sistema de Whitelist • v3.0',
+        iconURL: client.user.displayAvatarURL()
+      })
+      .setTimestamp();
+
+    // Embed de Estatísticas
+    const statsEmbed = new EmbedBuilder()
+      .setColor('#4169E1')
+      .setTitle('📊 ESTATÍSTICAS DO SERVIDOR')
+      .addFields(
+        { name: '👥 Membros Totais', value: `${guild.memberCount}`, inline: true },
+        { name: '✅ Aprovados Hoje', value: `${statistics.approved}`, inline: true },
+        { name: '⏳ Em Análise', value: `${activeTickets.size}`, inline: true },
+        { name: '🏆 Taxa de Aprovação', value: `${calculateApprovalRate()}%`, inline: true },
+        { name: '📋 Total de Whitelists', value: `${statistics.totalWhitelists}`, inline: true },
+        { name: '❌ Reprovadas', value: `${statistics.rejected}`, inline: true }
+      )
+      .setFooter({ text: 'Atualizado em tempo real' });
+
+    // Botões
+    const startButton = new ButtonBuilder()
+      .setCustomId('start_whitelist_ticket')
+      .setLabel('📝 INICIAR WHITELIST')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🌟');
+
+    const rulesButton = new ButtonBuilder()
+      .setCustomId('show_rules')
+      .setLabel('📜 REGRAS COMPLETAS')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('📋');
+
+    const statusButton = new ButtonBuilder()
+      .setCustomId('check_status')
+      .setLabel('🔍 VERIFICAR STATUS')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('📊');
+
+    const helpButton = new ButtonBuilder()
+      .setCustomId('whitelist_help')
+      .setLabel('❓ AJUDA')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('💡');
+
+    const row1 = new ActionRowBuilder().addComponents(startButton, rulesButton);
+    const row2 = new ActionRowBuilder().addComponents(statusButton, helpButton);
+
+    await channel.send({
+      embeds: [mainEmbed, statsEmbed],
+      components: [row1, row2]
+    });
+
+    console.log(`✅ Painel criado em ${guild.name}`);
+  } catch (error) {
+    console.error(`Erro ao criar painel em ${guild.name}:`, error);
+  }
+}
+
+// ============================================
+// EVENTO: GUILD CREATE (BOT ADICIONADO)
+// ============================================
+client.on(Events.GuildCreate, async (guild) => {
+  console.log(`📥 Bot adicionado ao servidor: ${guild.name}`);
+  
+  try {
+    // Mensagem de boas-vindas no canal geral
+    let targetChannel = guild.systemChannel;
+    
+    if (!targetChannel) {
+      const channels = guild.channels.cache
+        .filter(c => c.type === ChannelType.GuildText && 
+               c.permissionsFor(guild.members.me).has(PermissionFlagsBits.SendMessages));
+      targetChannel = channels.first();
+    }
+    
+    if (targetChannel) {
+      const welcomeEmbed = new EmbedBuilder()
+        .setColor('#0099FF')
+        .setTitle('🤖 BOT WHITELIST C.D.D - INSTALADO COM SUCESSO!')
+        .setDescription('**O sistema de whitelist está ativo e configurado!**')
+        .addFields(
+          { name: '📋 Comando Principal', value: '`/whitelist` - Iniciar processo', inline: true },
+          { name: '🎮 Comandos Prefix', value: '`!help` - Ver todos os comandos', inline: true },
+          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
+          { name: '📢 Próximo Passo', value: `Configure o canal <#${config.whitelistChannel}> para o painel`, inline: false }
+        )
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({ text: 'Sistema Profissional de Whitelist • v3.0' })
+        .setTimestamp();
+      
+      await targetChannel.send({ embeds: [welcomeEmbed] });
+    }
+    
+    // Criar painel de whitelist
+    await createWhitelistPanel(guild);
+    
+    // Log
+    const logChannel = await client.channels.fetch(config.whitelistLog).catch(() => null);
+    if (logChannel) {
+      const logEmbed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('📥 Bot Adicionado a Novo Servidor')
+        .addFields(
+          { name: '🌐 Servidor', value: guild.name, inline: true },
+          { name: '👥 Membros', value: `${guild.memberCount}`, inline: true },
+          { name: '👑 Dono', value: `<@${guild.ownerId}>`, inline: true }
+        )
+        .setTimestamp();
+      
+      await logChannel.send({ embeds: [logEmbed] });
+    }
+    
+  } catch (error) {
+    console.error('Erro ao configurar novo servidor:', error);
+  }
+});
 
 // ============================================
 // EVENTO: INTERACTION CREATE
@@ -360,11 +454,11 @@ async function handleSlashCommand(interaction) {
     case 'whitelist':
       await handleWhitelistCommand(interaction);
       break;
-    case 'fechar':
-      await handleCloseCommand(interaction);
-      break;
     case 'status':
       await handleStatusCommand(interaction);
+      break;
+    case 'fechar':
+      await handleCloseCommand(interaction);
       break;
     case 'revisar':
       await handleReviewCommand(interaction);
@@ -375,11 +469,14 @@ async function handleSlashCommand(interaction) {
     case 'limpar':
       await handleCleanCommand(interaction);
       break;
+    case 'painel':
+      await handlePanelCommand(interaction);
+      break;
   }
 }
 
 // ============================================
-// HANDLER: COMANDO WHITELIST
+// COMANDO: WHITELIST
 // ============================================
 async function handleWhitelistCommand(interaction) {
   await safeDeferReply(interaction);
@@ -388,39 +485,43 @@ async function handleWhitelistCommand(interaction) {
   const guild = interaction.guild;
   const member = await guild.members.fetch(userId);
   
+  // Já aprovado
   if (member.roles.cache.has(config.approvedRole)) {
     return interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setColor('#00FF00')
-          .setTitle('✅ Whitelist já Aprovada')
-          .setDescription('Você já possui whitelist aprovada!')
+          .setTitle('✅ WHITELIST JÁ APROVADA')
+          .setDescription('Você já possui whitelist aprovada! Bem-vindo à Cidade de Deus RP.')
+          .setFooter({ text: 'Aproveite o servidor!' })
       ]
     });
   }
   
+  // Ticket ativo
   if (activeTickets.has(userId)) {
-    const existingChannel = activeTickets.get(userId);
     return interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setColor('#FFA500')
-          .setTitle('⚠️ Ticket já Existente')
-          .setDescription(`Você já possui um ticket ativo em <#${existingChannel}>`)
+          .setTitle('⚠️ TICKET JÁ EXISTENTE')
+          .setDescription(`Você já possui um ticket de whitelist ativo em <#${activeTickets.get(userId)}>`)
+          .setFooter({ text: 'Acesse seu ticket para continuar' })
       ]
     });
   }
   
+  // Cooldown
   if (cooldowns.has(userId)) {
-    const cooldownTime = cooldowns.get(userId);
-    const timeLeft = Math.ceil((cooldownTime - Date.now()) / 1000 / 60);
+    const timeLeft = Math.ceil((cooldowns.get(userId) - Date.now()) / 1000 / 60);
     if (timeLeft > 0) {
       return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor('#FF0000')
-            .setTitle('⏰ Em Cooldown')
+            .setTitle('⏰ EM COOLDOWN')
             .setDescription(`Aguarde **${timeLeft} minutos** antes de abrir um novo ticket.`)
+            .setFooter({ text: 'Use este tempo para estudar as regras!' })
         ]
       });
     }
@@ -429,34 +530,21 @@ async function handleWhitelistCommand(interaction) {
   try {
     const category = await guild.channels.fetch(config.categoryId);
     if (!category) {
-      return interaction.editReply({
-        content: '❌ Erro: Categoria de whitelist não configurada.'
-      });
+      return interaction.editReply({ content: '❌ Categoria não configurada.' });
     }
     
-    const channelName = `whitelist-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const channelName = `🎫-whitelist-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     
     const channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
       parent: category.id,
+      topic: `Whitelist de ${interaction.user.tag} | ID: ${interaction.user.id}`,
       permissionOverwrites: [
-        {
-          id: guild.id,
-          deny: [PermissionFlagsBits.ViewChannel]
-        },
-        {
-          id: userId,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
-        },
-        {
-          id: config.staffRole,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
-        },
-        {
-          id: client.user.id,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels]
-        }
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        { id: config.staffRole, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
       ]
     });
     
@@ -466,43 +554,57 @@ async function handleWhitelistCommand(interaction) {
       answers: {},
       channelId: channel.id,
       startedAt: Date.now(),
-      userId: userId,
+      userId,
       userTag: interaction.user.tag
     });
     
     statistics.totalWhitelists++;
+    statistics.pending = activeTickets.size;
     
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setColor('#00FF00')
-          .setTitle('✅ Ticket Criado!')
+          .setTitle('✅ TICKET CRIADO COM SUCESSO!')
           .setDescription(`Seu ticket foi criado em ${channel}`)
+          .setFooter({ text: 'Boa sorte na sua whitelist!' })
       ]
     });
     
+    // Adicionar cargo pendente
     try {
       await member.roles.add(config.pendingRole);
     } catch (error) {
-      console.error('Erro ao adicionar cargo pendente:', error);
+      console.error('Erro ao adicionar cargo:', error);
     }
     
+    // Mensagem de boas-vindas no ticket
     const welcomeEmbed = new EmbedBuilder()
       .setColor('#FFD700')
       .setTitle('🌆 BEM-VINDO À CIDADE DE DEUS RP')
       .setDescription(`**Olá ${interaction.user}, sua jornada começa agora!**`)
       .addFields(
-        { name: '📋 PROCESSO', value: 'Responda as 3 etapas de perguntas.' },
-        { name: '📝 DICA', value: 'Quanto mais detalhadas as respostas, maiores as chances!' }
+        { name: '📋 PROCESSO DE WHITELIST', value: 'Você responderá **3 etapas** de perguntas para avaliarmos seu conhecimento e maturidade para o Roleplay.' },
+        { name: '⏱️ TEMPO', value: 'Não há limite de tempo. Responda com **calma e atenção**.', inline: true },
+        { name: '📝 DICA IMPORTANTE', value: 'Quanto mais **detalhadas** forem suas respostas, maiores as chances de aprovação!', inline: true },
+        { name: '🎯 ETAPAS', value: '```\n1️⃣ Regras de RP\n2️⃣ Raciocínio Lógico\n3️⃣ Lore do Personagem\n```' }
       )
-      .setFooter({ text: 'Clique no botão abaixo para começar' });
+      .setThumbnail(interaction.user.displayAvatarURL())
+      .setFooter({ text: 'Clique no botão abaixo para começar • Boa sorte!' })
+      .setTimestamp();
     
     const startButton = new ButtonBuilder()
       .setCustomId('start_whitelist_form')
       .setLabel('📝 INICIAR WHITELIST')
-      .setStyle(ButtonStyle.Success);
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🌟');
     
-    const row = new ActionRowBuilder().addComponents(startButton);
+    const cancelButton = new ButtonBuilder()
+      .setCustomId('cancel_whitelist')
+      .setLabel('❌ CANCELAR')
+      .setStyle(ButtonStyle.Danger);
+    
+    const row = new ActionRowBuilder().addComponents(startButton, cancelButton);
     
     await channel.send({
       content: `${interaction.user}`,
@@ -510,16 +612,80 @@ async function handleWhitelistCommand(interaction) {
       components: [row]
     });
     
+    // Notificar STAFF
+    const logChannel = await client.channels.fetch(config.whitelistLog);
+    if (logChannel) {
+      const notifyEmbed = new EmbedBuilder()
+        .setColor('#FFA500')
+        .setTitle('📋 Nova Whitelist Iniciada')
+        .setDescription(`**${interaction.user.tag}** iniciou o processo.`)
+        .addFields(
+          { name: '👤 Usuário', value: `${interaction.user}`, inline: true },
+          { name: '🆔 ID', value: interaction.user.id, inline: true },
+          { name: '🎫 Ticket', value: `${channel}`, inline: true }
+        )
+        .setThumbnail(interaction.user.displayAvatarURL())
+        .setTimestamp();
+      
+      await logChannel.send({ content: `<@&${config.staffRole}>`, embeds: [notifyEmbed] });
+    }
+    
   } catch (error) {
     console.error('Erro ao criar ticket:', error);
-    await interaction.editReply({
-      content: '❌ Erro ao criar ticket. Contate um administrador.'
-    });
+    await interaction.editReply({ content: '❌ Erro ao criar ticket.' });
   }
 }
 
 // ============================================
-// HANDLER: COMANDO FECHAR
+// COMANDO: STATUS
+// ============================================
+async function handleStatusCommand(interaction) {
+  const userId = interaction.user.id;
+  const member = await interaction.guild.members.fetch(userId);
+  
+  if (member.roles.cache.has(config.approvedRole)) {
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor('#00FF00')
+          .setTitle('✅ WHITELIST APROVADA')
+          .setDescription('Sua whitelist já foi aprovada! Bem-vindo à Cidade de Deus!')
+      ],
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
+  if (activeTickets.has(userId)) {
+    const session = whitelistSessions.get(userId);
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor('#FFA500')
+          .setTitle('⏳ WHITELIST EM ANÁLISE')
+          .setDescription(`Sua whitelist está em análise pela equipe STAFF.`)
+          .addFields(
+            { name: '📋 Ticket', value: `<#${activeTickets.get(userId)}>`, inline: true },
+            { name: '⏰ Iniciado', value: session ? `<t:${Math.floor(session.startedAt / 1000)}:R>` : 'Desconhecido', inline: true }
+          )
+      ],
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
+  return interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor('#0099FF')
+        .setTitle('📋 NENHUMA WHITELIST ATIVA')
+        .setDescription('Você não possui nenhuma whitelist em andamento.')
+        .addFields({ name: '🌟 Iniciar', value: 'Use `/whitelist` para começar' })
+    ],
+    flags: MessageFlags.Ephemeral
+  });
+}
+
+// ============================================
+// COMANDO: FECHAR (STAFF)
 // ============================================
 async function handleCloseCommand(interaction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -533,7 +699,7 @@ async function handleCloseCommand(interaction) {
   
   const channel = interaction.channel;
   
-  if (!channel.name.startsWith('whitelist-')) {
+  if (!channel.name.startsWith('🎫-whitelist-')) {
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Canal Inválido')],
       flags: MessageFlags.Ephemeral
@@ -561,34 +727,7 @@ async function handleCloseCommand(interaction) {
 }
 
 // ============================================
-// HANDLER: COMANDO STATUS
-// ============================================
-async function handleStatusCommand(interaction) {
-  const userId = interaction.user.id;
-  const member = await interaction.guild.members.fetch(userId);
-  
-  if (member.roles.cache.has(config.approvedRole)) {
-    return interaction.reply({
-      embeds: [new EmbedBuilder().setColor('#00FF00').setTitle('✅ Whitelist Aprovada').setDescription('Sua whitelist já foi aprovada!')],
-      flags: MessageFlags.Ephemeral
-    });
-  }
-  
-  if (activeTickets.has(userId)) {
-    return interaction.reply({
-      embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('⏳ Whitelist em Análise').setDescription(`Sua whitelist está em análise. Ticket: <#${activeTickets.get(userId)}>`)],
-      flags: MessageFlags.Ephemeral
-    });
-  }
-  
-  return interaction.reply({
-    embeds: [new EmbedBuilder().setColor('#0099FF').setTitle('📋 Nenhuma Whitelist Ativa').setDescription('Use `/whitelist` para começar.')],
-    flags: MessageFlags.Ephemeral
-  });
-}
-
-// ============================================
-// HANDLER: COMANDO REVISAR
+// COMANDO: REVISAR (STAFF)
 // ============================================
 async function handleReviewCommand(interaction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -609,7 +748,8 @@ async function handleReviewCommand(interaction) {
   
   const pendingList = [];
   for (const [userId, channelId] of activeTickets) {
-    pendingList.push(`• <@${userId}> - <#${channelId}>`);
+    const session = whitelistSessions.get(userId);
+    pendingList.push(`• <@${userId}> - <#${channelId}> - ${session ? `<t:${Math.floor(session.startedAt / 1000)}:R>` : 'Em andamento'}`);
   }
   
   const embed = new EmbedBuilder()
@@ -622,7 +762,7 @@ async function handleReviewCommand(interaction) {
 }
 
 // ============================================
-// HANDLER: COMANDO ESTATÍSTICAS
+// COMANDO: ESTATÍSTICAS (STAFF)
 // ============================================
 async function handleStatsCommand(interaction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -636,20 +776,23 @@ async function handleStatsCommand(interaction) {
   
   const embed = new EmbedBuilder()
     .setColor('#4169E1')
-    .setTitle('📊 Estatísticas do Sistema')
+    .setTitle('📊 ESTATÍSTICAS DO SISTEMA')
     .addFields(
       { name: '📋 Total', value: `${statistics.totalWhitelists}`, inline: true },
       { name: '✅ Aprovadas', value: `${statistics.approved}`, inline: true },
       { name: '❌ Reprovadas', value: `${statistics.rejected}`, inline: true },
       { name: '⏳ Pendentes', value: `${activeTickets.size}`, inline: true },
-      { name: '📈 Taxa de Aprovação', value: `${calculateApprovalRate()}%`, inline: true }
-    );
+      { name: '📈 Taxa de Aprovação', value: `${calculateApprovalRate()}%`, inline: true },
+      { name: '🏓 Ping', value: `${client.ws.ping}ms`, inline: true },
+      { name: '⏰ Uptime', value: formatUptime(client.uptime), inline: true }
+    )
+    .setTimestamp();
   
   await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
 // ============================================
-// HANDLER: COMANDO LIMPAR
+// COMANDO: LIMPAR (STAFF)
 // ============================================
 async function handleCleanCommand(interaction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -664,7 +807,7 @@ async function handleCleanCommand(interaction) {
   await safeDeferReply(interaction);
   
   const category = await interaction.guild.channels.fetch(config.categoryId);
-  const channels = category.children.cache.filter(c => c.name.startsWith('whitelist-'));
+  const channels = category.children.cache.filter(c => c.name.startsWith('🎫-whitelist-'));
   
   let deleted = 0;
   for (const channel of channels.values()) {
@@ -674,8 +817,16 @@ async function handleCleanCommand(interaction) {
         await channel.delete();
         deleted++;
       } catch (error) {
-        console.error(`Erro ao deletar canal:`, error);
+        console.error('Erro ao deletar:', error);
       }
+    }
+  }
+  
+  // Limpar cache
+  for (const [userId, channelId] of activeTickets) {
+    if (!interaction.guild.channels.cache.has(channelId)) {
+      activeTickets.delete(userId);
+      whitelistSessions.delete(userId);
     }
   }
   
@@ -683,7 +834,23 @@ async function handleCleanCommand(interaction) {
 }
 
 // ============================================
-// EVENTO: MESSAGE CREATE (PREFIX COMMANDS)
+// COMANDO: PAINEL (OWNER)
+// ============================================
+async function handlePanelCommand(interaction) {
+  if (interaction.user.id !== config.ownerId) {
+    return interaction.reply({
+      content: '❌ Apenas o Owner pode usar este comando.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
+  await safeDeferReply(interaction);
+  await createWhitelistPanel(interaction.guild);
+  await interaction.editReply({ content: '✅ Painel de whitelist recriado com sucesso!' });
+}
+
+// ============================================
+// EVENTO: MESSAGE CREATE (PREFIX !)
 // ============================================
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
@@ -693,73 +860,77 @@ client.on(Events.MessageCreate, async (message) => {
   const command = args.shift().toLowerCase();
   
   switch (command) {
-    case 'status':
-      await handlePrefixStatus(message);
-      break;
     case 'ping':
-      await handlePrefixPing(message);
+      await message.reply(`🏓 Pong! **${client.ws.ping}ms**`);
       break;
+      
+    case 'status':
+      const statusEmbed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('📊 STATUS DO SISTEMA')
+        .addFields(
+          { name: '🤖 Bot', value: client.user.tag, inline: true },
+          { name: '📋 Tickets Ativos', value: `${activeTickets.size}`, inline: true },
+          { name: '✅ Aprovados', value: `${statistics.approved}`, inline: true },
+          { name: '🏓 Ping', value: `${client.ws.ping}ms`, inline: true },
+          { name: '⏰ Uptime', value: formatUptime(client.uptime), inline: true }
+        )
+        .setTimestamp();
+      await message.reply({ embeds: [statusEmbed] });
+      break;
+      
     case 'help':
-      await handlePrefixHelp(message);
+      const helpEmbed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle('📚 CENTRAL DE AJUDA - CIDADE DE DEUS RP')
+        .setDescription('**Sistema de Whitelist Automatizado**')
+        .addFields(
+          { 
+            name: '📋 **COMANDOS SLASH**', 
+            value: '`/whitelist` - Iniciar whitelist\n`/status` - Verificar status\n`/fechar` - Fechar ticket (STAFF)\n`/revisar` - Listar pendentes (STAFF)\n`/estatisticas` - Estatísticas (STAFF)' 
+          },
+          { 
+            name: '🔧 **COMANDOS PREFIX (!)**', 
+            value: '`!ping` - Latência\n`!status` - Status do sistema\n`!help` - Esta mensagem\n`!regras` - Regras do servidor\n`!info` - Informações' 
+          }
+        )
+        .setThumbnail(message.guild.iconURL())
+        .setFooter({ text: 'C.D.D Roleplay • v3.0' });
+      await message.reply({ embeds: [helpEmbed] });
       break;
+      
     case 'regras':
-      await handlePrefixRules(message);
+      const rulesEmbed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
+        .setDescription('**Leia atentamente todas as regras!**')
+        .addFields(
+          { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito ou discriminação\n• Proibido qualquer tipo de assédio' },
+          { name: '🎭 REGRAS DE RP', value: '• **RDM** - PROIBIDO\n• **VDM** - PROIBIDO\n• **Metagaming** - PROIBIDO\n• **Powergaming** - PROIBIDO\n• **Combat Logging** - PROIBIDO' },
+          { name: '⚠️ PUNIÇÕES', value: '1ª - Aviso\n2ª - Kick\n3ª - Ban Temporário\n4ª - Ban Permanente' }
+        )
+        .setFooter({ text: 'O descumprimento das regras resultará em punições' });
+      await message.reply({ embeds: [rulesEmbed] });
+      break;
+      
+    case 'info':
+      const infoEmbed = new EmbedBuilder()
+        .setColor('#4169E1')
+        .setTitle('🌆 CIDADE DE DEUS ROLEPLAY')
+        .setDescription('**O maior servidor de Roleplay do Brasil!**')
+        .addFields(
+          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
+          { name: '👥 Membros', value: `${message.guild.memberCount}`, inline: true },
+          { name: '📅 Criado em', value: `<t:${Math.floor(message.guild.createdTimestamp / 1000)}:D>`, inline: true },
+          { name: '🌟 Boost', value: `Nível ${message.guild.premiumTier}`, inline: true },
+          { name: '🎮 Sistema', value: 'Whitelist Obrigatória', inline: true },
+          { name: '⏰ Análise', value: 'Até 48 horas', inline: true }
+        )
+        .setFooter({ text: 'Junte-se a nós e faça história!' });
+      await message.reply({ embeds: [infoEmbed] });
       break;
   }
 });
-
-// ============================================
-// PREFIX: STATUS
-// ============================================
-async function handlePrefixStatus(message) {
-  const embed = new EmbedBuilder()
-    .setColor('#00FF00')
-    .setTitle('📊 Status do Sistema')
-    .addFields(
-      { name: '📋 Tickets Ativos', value: `${activeTickets.size}`, inline: true },
-      { name: '🏓 Ping', value: `${client.ws.ping}ms`, inline: true }
-    );
-  
-  await message.reply({ embeds: [embed] });
-}
-
-// ============================================
-// PREFIX: PING
-// ============================================
-async function handlePrefixPing(message) {
-  await message.reply(`🏓 Pong! Latência: ${client.ws.ping}ms`);
-}
-
-// ============================================
-// PREFIX: HELP
-// ============================================
-async function handlePrefixHelp(message) {
-  const embed = new EmbedBuilder()
-    .setColor('#FFD700')
-    .setTitle('📚 Central de Ajuda')
-    .addFields(
-      { name: '📋 Comandos Slash', value: '`/whitelist` - Iniciar whitelist\n`/status` - Verificar status\n`/fechar` - Fechar ticket (STAFF)' },
-      { name: '🔧 Comandos Prefix', value: '`!status` - Status\n`!ping` - Ping\n`!help` - Ajuda\n`!regras` - Regras' }
-    );
-  
-  await message.reply({ embeds: [embed] });
-}
-
-// ============================================
-// PREFIX: REGRAS
-// ============================================
-async function handlePrefixRules(message) {
-  const embed = new EmbedBuilder()
-    .setColor('#FF0000')
-    .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
-    .setDescription('**Leia atentamente!**')
-    .addFields(
-      { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito ou discriminação' },
-      { name: '🎭 REGRAS DE RP', value: '• RDM - PROIBIDO\n• VDM - PROIBIDO\n• Metagaming - PROIBIDO\n• Powergaming - PROIBIDO' }
-    );
-  
-  await message.reply({ embeds: [embed] });
-}
 
 // ============================================
 // HANDLER: BOTÕES
@@ -768,49 +939,47 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const userId = interaction.user.id;
   
-  // Botão do Embed Principal - Iniciar Whitelist
+  // Painel Principal - Iniciar Whitelist
   if (customId === 'start_whitelist_ticket') {
     await safeDeferReply(interaction);
     await handleWhitelistCommand(interaction);
   }
   
-  // Botão: Mostrar Regras
+  // Painel Principal - Regras
   else if (customId === 'show_rules') {
     const embed = new EmbedBuilder()
       .setColor('#FF0000')
       .setTitle('📜 REGRAS DA CIDADE DE DEUS RP')
       .addFields(
         { name: '🚫 REGRAS GERAIS', value: '• Respeito acima de tudo\n• Sem preconceito' },
-        { name: '🎭 REGRAS DE RP', value: '• RDM - PROIBIDO\n• VDM - PROIBIDO\n• Metagaming - PROIBIDO' }
+        { name: '🎭 REGRAS DE RP', value: '• RDM - PROIBIDO\n• VDM - PROIBIDO\n• Metagaming - PROIBIDO\n• Powergaming - PROIBIDO' }
       );
-    
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   }
   
-  // Botão: Verificar Status
+  // Painel Principal - Status
   else if (customId === 'check_status') {
     await handleStatusCommand(interaction);
   }
   
-  // Botão: Ajuda
+  // Painel Principal - Ajuda
   else if (customId === 'whitelist_help') {
     const embed = new EmbedBuilder()
       .setColor('#0099FF')
-      .setTitle('❓ Ajuda - Whitelist')
+      .setTitle('❓ AJUDA - WHITELIST')
       .setDescription('Use `/whitelist` para iniciar o processo.')
-      .addFields({ name: '📋 Etapas', value: '1. Regras de RP\n2. Raciocínio Lógico\n3. Lore do Personagem' });
-    
+      .addFields(
+        { name: '📋 Etapas', value: '1. Regras de RP\n2. Raciocínio Lógico\n3. Lore do Personagem' },
+        { name: '⏰ Tempo', value: 'Análise em até 48 horas' }
+      );
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   }
   
-  // Botão: Iniciar Formulário
+  // Ticket - Iniciar Formulário
   else if (customId === 'start_whitelist_form') {
     const session = whitelistSessions.get(userId);
     if (!session) {
-      return interaction.reply({
-        content: '❌ Sessão não encontrada.',
-        flags: MessageFlags.Ephemeral
-      });
+      return interaction.reply({ content: '❌ Sessão não encontrada.', flags: MessageFlags.Ephemeral });
     }
     
     const embed = new EmbedBuilder()
@@ -819,27 +988,69 @@ async function handleButtonInteraction(interaction) {
       .setDescription('**Responda as perguntas sobre regras básicas.**')
       .addFields({
         name: '📌 PERGUNTAS',
-        value: '1. Nome do personagem\n2. Idade\n3. Já jogou RP?\n4. O que é RDM/VDM?\n5. Regras importantes'
-      });
+        value: '```\n1. Nome do personagem\n2. Idade\n3. Já jogou RP?\n4. O que é RDM/VDM?\n5. Regras importantes\n```'
+      })
+      .setFooter({ text: 'Clique no botão para responder • Etapa 1/3' });
     
     const button = new ButtonBuilder()
       .setCustomId('next_page')
-      .setLabel('📝 RESPONDER')
-      .setStyle(ButtonStyle.Primary);
+      .setLabel('📝 RESPONDER ETAPA 1')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('1️⃣');
     
     const row = new ActionRowBuilder().addComponents(button);
     
     await interaction.reply({ embeds: [embed], components: [row] });
   }
   
-  // Botão: Próxima Página
+  // Ticket - Cancelar
+  else if (customId === 'cancel_whitelist') {
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor('#FF0000')
+          .setTitle('❌ Cancelar Whitelist?')
+          .setDescription('Tem certeza?')
+      ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('confirm_cancel').setLabel('✅ Sim').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId('keep_ticket').setLabel('❌ Não').setStyle(ButtonStyle.Secondary)
+        )
+      ],
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  
+  // Confirmar Cancelamento
+  else if (customId === 'confirm_cancel') {
+    const session = whitelistSessions.get(userId);
+    if (session) {
+      whitelistSessions.delete(userId);
+      activeTickets.delete(userId);
+      
+      const member = await interaction.guild.members.fetch(userId);
+      await member.roles.remove(config.pendingRole).catch(() => {});
+      
+      await interaction.update({
+        embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Whitelist Cancelada').setDescription('Fechando em 5 segundos...')],
+        components: []
+      });
+      
+      setTimeout(() => interaction.channel.delete(), 5000);
+    }
+  }
+  
+  // Manter Ticket
+  else if (customId === 'keep_ticket') {
+    await interaction.update({ content: '✅ Continuando...', embeds: [], components: [] });
+  }
+  
+  // Próxima Página
   else if (customId === 'next_page') {
     const session = whitelistSessions.get(userId);
     if (!session) {
-      return interaction.reply({
-        content: '❌ Sessão não encontrada.',
-        flags: MessageFlags.Ephemeral
-      });
+      return interaction.reply({ content: '❌ Sessão não encontrada.', flags: MessageFlags.Ephemeral });
     }
     
     if (session.step === 0 || session.step === 1) {
@@ -849,24 +1060,24 @@ async function handleButtonInteraction(interaction) {
     }
   }
   
-  // Botão: Enviar para Análise
+  // Enviar para Análise
   else if (customId === 'submit_whitelist') {
     await submitWhitelist(interaction);
   }
   
-  // Botões STAFF - Aprovar/Reprovar
-  else if (customId.startsWith('approve_') || customId.startsWith('reject_')) {
-    await handleStaffDecision(interaction);
-  }
-  
-  // Botão: Lore do Personagem
+  // Adicionar Lore
   else if (customId === 'submit_lore') {
     await showLoreModal(interaction);
+  }
+  
+  // Aprovar/Reprovar (STAFF)
+  else if (customId.startsWith('approve_') || customId.startsWith('reject_')) {
+    await handleStaffDecision(interaction);
   }
 }
 
 // ============================================
-// PÁGINA 1 MODAL
+// MODAIS
 // ============================================
 async function showPage1Modal(interaction) {
   const modal = new ModalBuilder()
@@ -876,6 +1087,7 @@ async function showPage1Modal(interaction) {
   const nameInput = new TextInputBuilder()
     .setCustomId('char_name')
     .setLabel('👤 Nome do personagem')
+    .setPlaceholder('Ex: João Silva')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMinLength(3)
@@ -884,6 +1096,7 @@ async function showPage1Modal(interaction) {
   const ageInput = new TextInputBuilder()
     .setCustomId('char_age')
     .setLabel('🎂 Idade do personagem')
+    .setPlaceholder('Ex: 25')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMinLength(1)
@@ -891,7 +1104,8 @@ async function showPage1Modal(interaction) {
   
   const rpExperienceInput = new TextInputBuilder()
     .setCustomId('rp_experience')
-    .setLabel('🎮 Já jogou RP antes?')
+    .setLabel('🎮 Já jogou RP antes? Onde?')
+    .setPlaceholder('Conte sua experiência...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(5)
@@ -900,6 +1114,7 @@ async function showPage1Modal(interaction) {
   const rdmVdmInput = new TextInputBuilder()
     .setCustomId('rdm_vdm')
     .setLabel('⚠️ O que é RDM e VDM?')
+    .setPlaceholder('Explique os conceitos...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -907,7 +1122,8 @@ async function showPage1Modal(interaction) {
   
   const rulesInput = new TextInputBuilder()
     .setCustomId('server_rules')
-    .setLabel('📜 Regras importantes do servidor')
+    .setLabel('📜 Cite regras importantes')
+    .setPlaceholder('Liste as regras que você conhece...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(20)
@@ -924,9 +1140,6 @@ async function showPage1Modal(interaction) {
   await interaction.showModal(modal);
 }
 
-// ============================================
-// PÁGINA 2 MODAL
-// ============================================
 async function showPage2Modal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId('page2_modal')
@@ -935,6 +1148,7 @@ async function showPage2Modal(interaction) {
   const policeInput = new TextInputBuilder()
     .setCustomId('police_approach')
     .setLabel('👮 Abordado pela polícia?')
+    .setPlaceholder('Como reagiria?')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -943,6 +1157,7 @@ async function showPage2Modal(interaction) {
   const robberyInput = new TextInputBuilder()
     .setCustomId('robbery_reaction')
     .setLabel('💰 Como reagiria a um assalto?')
+    .setPlaceholder('Descreva sua reação...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -951,6 +1166,7 @@ async function showPage2Modal(interaction) {
   const metagamingInput = new TextInputBuilder()
     .setCustomId('metagaming')
     .setLabel('🎭 O que é metagaming?')
+    .setPlaceholder('Explique o conceito...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -959,6 +1175,7 @@ async function showPage2Modal(interaction) {
   const powergamingInput = new TextInputBuilder()
     .setCustomId('powergaming')
     .setLabel('💪 O que é powergaming?')
+    .setPlaceholder('Explique o conceito...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -967,6 +1184,7 @@ async function showPage2Modal(interaction) {
   const rpSituationInput = new TextInputBuilder()
     .setCustomId('rp_situation')
     .setLabel('🎬 Situação de RP vivida')
+    .setPlaceholder('Conte uma experiência...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(20)
@@ -983,9 +1201,6 @@ async function showPage2Modal(interaction) {
   await interaction.showModal(modal);
 }
 
-// ============================================
-// LORE MODAL
-// ============================================
 async function showLoreModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId('lore_modal')
@@ -994,6 +1209,7 @@ async function showLoreModal(interaction) {
   const historyInput = new TextInputBuilder()
     .setCustomId('char_history')
     .setLabel('📚 História do personagem')
+    .setPlaceholder('Conte a história completa...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(50)
@@ -1002,6 +1218,7 @@ async function showLoreModal(interaction) {
   const personalityInput = new TextInputBuilder()
     .setCustomId('char_personality')
     .setLabel('🎭 Personalidade')
+    .setPlaceholder('Descreva a personalidade...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(20)
@@ -1010,6 +1227,7 @@ async function showLoreModal(interaction) {
   const objectiveInput = new TextInputBuilder()
     .setCustomId('char_objective')
     .setLabel('🎯 Objetivo na cidade')
+    .setPlaceholder('Quais os objetivos?')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -1018,6 +1236,7 @@ async function showLoreModal(interaction) {
   const professionInput = new TextInputBuilder()
     .setCustomId('char_profession')
     .setLabel('💼 Profissão pretendida')
+    .setPlaceholder('Ex: Policial, Médico...')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMinLength(3)
@@ -1026,6 +1245,7 @@ async function showLoreModal(interaction) {
   const relationsInput = new TextInputBuilder()
     .setCustomId('char_relations')
     .setLabel('🤝 Relações e conexões')
+    .setPlaceholder('Descreva relações importantes...')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMinLength(10)
@@ -1050,13 +1270,10 @@ async function handleModalSubmit(interaction) {
   const session = whitelistSessions.get(userId);
   
   if (!session) {
-    return interaction.reply({
-      content: '❌ Sessão expirada.',
-      flags: MessageFlags.Ephemeral
-    });
+    return interaction.reply({ content: '❌ Sessão expirada.', flags: MessageFlags.Ephemeral });
   }
   
-  // Página 1 Modal
+  // Página 1
   if (interaction.customId === 'page1_modal') {
     const charName = interaction.fields.getTextInputValue('char_name');
     const charAge = interaction.fields.getTextInputValue('char_age');
@@ -1066,19 +1283,13 @@ async function handleModalSubmit(interaction) {
     
     const age = parseInt(charAge);
     if (isNaN(age) || age < 16 || age > 100) {
-      return interaction.reply({
-        content: '❌ Idade deve ser entre 16 e 100 anos.',
-        flags: MessageFlags.Ephemeral
-      });
+      return interaction.reply({ content: '❌ Idade deve ser entre 16 e 100 anos.', flags: MessageFlags.Ephemeral });
     }
     
     session.answers.page1 = { charName, charAge: age, rpExperience, rdmVdm, serverRules };
     session.step = 2;
     
-    await interaction.reply({
-      content: '✅ Etapa 1 concluída!',
-      flags: MessageFlags.Ephemeral
-    });
+    await interaction.reply({ content: '✅ Etapa 1 concluída!', flags: MessageFlags.Ephemeral });
     
     const embed = new EmbedBuilder()
       .setColor('#0099FF')
@@ -1086,72 +1297,71 @@ async function handleModalSubmit(interaction) {
       .setDescription('**Agora vamos testar seu raciocínio.**')
       .addFields({
         name: '📌 PERGUNTAS',
-        value: '1. Abordagem policial\n2. Reação a assalto\n3. Metagaming\n4. Powergaming\n5. Situação de RP'
-      });
+        value: '```\n1. Abordagem policial\n2. Reação a assalto\n3. Metagaming\n4. Powergaming\n5. Situação de RP\n```'
+      })
+      .setFooter({ text: 'Clique no botão para responder • Etapa 2/3' });
     
     const button = new ButtonBuilder()
       .setCustomId('next_page')
-      .setLabel('📝 RESPONDER')
-      .setStyle(ButtonStyle.Primary);
+      .setLabel('📝 RESPONDER ETAPA 2')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('2️⃣');
     
     const row = new ActionRowBuilder().addComponents(button);
     
     await interaction.channel.send({ embeds: [embed], components: [row] });
   }
   
-  // Página 2 Modal
+  // Página 2
   else if (interaction.customId === 'page2_modal') {
-    const policeApproach = interaction.fields.getTextInputValue('police_approach');
-    const robberyReaction = interaction.fields.getTextInputValue('robbery_reaction');
-    const metagaming = interaction.fields.getTextInputValue('metagaming');
-    const powergaming = interaction.fields.getTextInputValue('powergaming');
-    const rpSituation = interaction.fields.getTextInputValue('rp_situation');
+    session.answers.page2 = {
+      policeApproach: interaction.fields.getTextInputValue('police_approach'),
+      robberyReaction: interaction.fields.getTextInputValue('robbery_reaction'),
+      metagaming: interaction.fields.getTextInputValue('metagaming'),
+      powergaming: interaction.fields.getTextInputValue('powergaming'),
+      rpSituation: interaction.fields.getTextInputValue('rp_situation')
+    };
     
-    session.answers.page2 = { policeApproach, robberyReaction, metagaming, powergaming, rpSituation };
-    
-    await interaction.reply({
-      content: '✅ Etapa 2 concluída!',
-      flags: MessageFlags.Ephemeral
-    });
+    await interaction.reply({ content: '✅ Etapa 2 concluída!', flags: MessageFlags.Ephemeral });
     
     const embed = new EmbedBuilder()
       .setColor('#FFD700')
       .setTitle('📋 WHITELIST - QUASE LÁ!')
       .setDescription('**Você completou as etapas obrigatórias!**')
       .addFields(
-        { name: '✅ OPÇÃO 1', value: 'Enviar para análise', inline: true },
-        { name: '📖 OPÇÃO 2', value: 'Adicionar Lore (recomendado)', inline: true }
-      );
+        { name: '✅ OPÇÃO 1', value: 'Enviar para análise agora', inline: true },
+        { name: '📖 OPÇÃO 2 (RECOMENDADO)', value: 'Adicionar Lore do personagem', inline: true }
+      )
+      .setFooter({ text: 'A Lore detalhada aumenta suas chances!' });
     
     const submitButton = new ButtonBuilder()
       .setCustomId('submit_whitelist')
-      .setLabel('✅ ENVIAR')
-      .setStyle(ButtonStyle.Success);
+      .setLabel('✅ ENVIAR PARA ANÁLISE')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('📤');
     
     const loreButton = new ButtonBuilder()
       .setCustomId('submit_lore')
       .setLabel('📖 ADICIONAR LORE')
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('✨');
     
     const row = new ActionRowBuilder().addComponents(submitButton, loreButton);
     
     await interaction.channel.send({ embeds: [embed], components: [row] });
   }
   
-  // Lore Modal
+  // Lore
   else if (interaction.customId === 'lore_modal') {
-    const charHistory = interaction.fields.getTextInputValue('char_history');
-    const charPersonality = interaction.fields.getTextInputValue('char_personality');
-    const charObjective = interaction.fields.getTextInputValue('char_objective');
-    const charProfession = interaction.fields.getTextInputValue('char_profession');
-    const charRelations = interaction.fields.getTextInputValue('char_relations');
+    session.answers.lore = {
+      charHistory: interaction.fields.getTextInputValue('char_history'),
+      charPersonality: interaction.fields.getTextInputValue('char_personality'),
+      charObjective: interaction.fields.getTextInputValue('char_objective'),
+      charProfession: interaction.fields.getTextInputValue('char_profession'),
+      charRelations: interaction.fields.getTextInputValue('char_relations')
+    };
     
-    session.answers.lore = { charHistory, charPersonality, charObjective, charProfession, charRelations };
-    
-    await interaction.reply({
-      content: '✅ Lore adicionada!',
-      flags: MessageFlags.Ephemeral
-    });
+    await interaction.reply({ content: '✅ Lore adicionada!', flags: MessageFlags.Ephemeral });
     
     const embed = new EmbedBuilder()
       .setColor('#9370DB')
@@ -1160,7 +1370,7 @@ async function handleModalSubmit(interaction) {
     
     const submitButton = new ButtonBuilder()
       .setCustomId('submit_whitelist')
-      .setLabel('✅ ENVIAR')
+      .setLabel('✅ ENVIAR PARA ANÁLISE')
       .setStyle(ButtonStyle.Success);
     
     const row = new ActionRowBuilder().addComponents(submitButton);
@@ -1177,16 +1387,10 @@ async function submitWhitelist(interaction) {
   const session = whitelistSessions.get(userId);
   
   if (!session || !session.answers.page1 || !session.answers.page2) {
-    return interaction.reply({
-      content: '❌ Complete as etapas 1 e 2 primeiro!',
-      flags: MessageFlags.Ephemeral
-    });
+    return interaction.reply({ content: '❌ Complete as etapas 1 e 2 primeiro!', flags: MessageFlags.Ephemeral });
   }
   
-  await interaction.reply({
-    content: '📤 Enviando para análise...',
-    flags: MessageFlags.Ephemeral
-  });
+  await interaction.reply({ content: '📤 Enviando para análise...', flags: MessageFlags.Ephemeral });
   
   try {
     const logChannel = await client.channels.fetch(config.whitelistLog);
@@ -1194,22 +1398,24 @@ async function submitWhitelist(interaction) {
     const mainEmbed = new EmbedBuilder()
       .setColor('#FFA500')
       .setTitle(`📋 WHITELIST - ${interaction.user.tag}`)
-      .setDescription(`**ID:** ${interaction.user.id}`)
+      .setDescription(`**ID:** ${interaction.user.id}\n**Menção:** ${interaction.user}`)
+      .setThumbnail(interaction.user.displayAvatarURL())
       .addFields(
-        { name: '━━━ ETAPA 1 ━━━', value: '**Regras de RP**' },
+        { name: '━━━ 📄 ETAPA 1: REGRAS DE RP ━━━', value: '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬' },
         { name: '👤 Personagem', value: session.answers.page1.charName, inline: true },
-        { name: '🎂 Idade', value: `${session.answers.page1.charAge}`, inline: true },
-        { name: '🎮 Experiência', value: session.answers.page1.rpExperience },
-        { name: '⚠️ RDM/VDM', value: session.answers.page1.rdmVdm },
-        { name: '📜 Regras', value: session.answers.page1.serverRules },
-        { name: '━━━ ETAPA 2 ━━━', value: '**Raciocínio Lógico**' },
-        { name: '👮 Abordagem', value: session.answers.page2.policeApproach },
-        { name: '💰 Assalto', value: session.answers.page2.robberyReaction },
+        { name: '🎂 Idade', value: `${session.answers.page1.charAge} anos`, inline: true },
+        { name: '🎮 Experiência RP', value: session.answers.page1.rpExperience },
+        { name: '⚠️ RDM e VDM', value: session.answers.page1.rdmVdm },
+        { name: '📜 Regras do Servidor', value: session.answers.page1.serverRules },
+        { name: '━━━ 📄 ETAPA 2: RACIOCÍNIO LÓGICO ━━━', value: '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬' },
+        { name: '👮 Abordagem Policial', value: session.answers.page2.policeApproach },
+        { name: '💰 Reação a Assalto', value: session.answers.page2.robberyReaction },
         { name: '🎭 Metagaming', value: session.answers.page2.metagaming },
         { name: '💪 Powergaming', value: session.answers.page2.powergaming },
-        { name: '🎬 Situação', value: session.answers.page2.rpSituation }
+        { name: '🎬 Situação RP', value: session.answers.page2.rpSituation }
       )
-      .setTimestamp();
+      .setTimestamp()
+      .setFooter({ text: 'C.D.D Roleplay - Sistema de Whitelist' });
     
     await logChannel.send({ embeds: [mainEmbed] });
     
@@ -1217,12 +1423,15 @@ async function submitWhitelist(interaction) {
       const loreEmbed = new EmbedBuilder()
         .setColor('#9370DB')
         .setTitle(`📖 LORE - ${session.answers.page1.charName}`)
+        .setDescription(`**Personagem de:** ${interaction.user}`)
         .addFields(
           { name: '📚 História', value: session.answers.lore.charHistory },
           { name: '🎭 Personalidade', value: session.answers.lore.charPersonality },
           { name: '🎯 Objetivo', value: session.answers.lore.charObjective },
-          { name: '💼 Profissão', value: session.answers.lore.charProfession }
-        );
+          { name: '💼 Profissão', value: session.answers.lore.charProfession, inline: true },
+          { name: '🤝 Relações', value: session.answers.lore.charRelations, inline: true }
+        )
+        .setTimestamp();
       
       await logChannel.send({ embeds: [loreEmbed] });
     }
@@ -1230,28 +1439,33 @@ async function submitWhitelist(interaction) {
     const approveButton = new ButtonBuilder()
       .setCustomId(`approve_${userId}`)
       .setLabel('✅ APROVAR')
-      .setStyle(ButtonStyle.Success);
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('✔️');
     
     const rejectButton = new ButtonBuilder()
       .setCustomId(`reject_${userId}`)
       .setLabel('❌ REPROVAR')
-      .setStyle(ButtonStyle.Danger);
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('✖️');
     
     const row = new ActionRowBuilder().addComponents(approveButton, rejectButton);
     
     await logChannel.send({
-      content: `📋 **NOVA WHITELIST**\n👤 ${interaction.user}\n🎫 ${interaction.channel}`,
+      content: `📋 **NOVA WHITELIST PARA ANÁLISE**\n👤 ${interaction.user}\n🎫 ${interaction.channel}`,
       components: [row]
     });
     
     const pendingEmbed = new EmbedBuilder()
       .setColor('#FFA500')
       .setTitle('⏳ WHITELIST EM ANÁLISE')
-      .setDescription('Sua whitelist foi enviada para análise.')
+      .setDescription('**Sua whitelist foi enviada para análise da equipe STAFF.**')
       .addFields(
-        { name: '📊 Status', value: '⏳ Pendente' },
-        { name: '⏱️ Prazo', value: 'Até 48 horas' }
-      );
+        { name: '📊 Status', value: '```⏳ PENDENTE```', inline: true },
+        { name: '👥 Equipe', value: '```Aguardando avaliação```', inline: true },
+        { name: '⏱️ Prazo', value: '```Até 48 horas```', inline: true }
+      )
+      .setFooter({ text: 'Agradecemos sua paciência • Boa sorte!' })
+      .setTimestamp();
     
     await interaction.channel.send({ embeds: [pendingEmbed] });
     
@@ -1268,7 +1482,7 @@ async function handleStaffDecision(interaction) {
   
   if (!member.roles.cache.has(config.staffRole) && interaction.user.id !== config.ownerId) {
     return interaction.reply({
-      content: '❌ Apenas STAFF pode aprovar/reprovar.',
+      embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Acesso Negado').setDescription('Apenas STAFF pode aprovar/reprovar.')],
       flags: MessageFlags.Ephemeral
     });
   }
@@ -1281,6 +1495,7 @@ async function handleStaffDecision(interaction) {
     const session = whitelistSessions.get(targetUserId);
     const ticketChannelId = activeTickets.get(targetUserId);
     
+    // Reprovar - Mostrar modal
     if (!isApproving) {
       const modal = new ModalBuilder()
         .setCustomId(`reject_reason_${targetUserId}`)
@@ -1288,7 +1503,8 @@ async function handleStaffDecision(interaction) {
       
       const reasonInput = new TextInputBuilder()
         .setCustomId('reject_reason')
-        .setLabel('📝 Motivo')
+        .setLabel('📝 Motivo da reprovação')
+        .setPlaceholder('Explique detalhadamente o motivo...')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
         .setMinLength(10)
@@ -1299,10 +1515,11 @@ async function handleStaffDecision(interaction) {
       return await interaction.showModal(modal);
     }
     
-    // APROVAÇÃO
+    // APROVAR
     await interaction.deferUpdate();
     
     statistics.approved++;
+    statistics.pending = activeTickets.size - 1;
     
     try {
       await targetMember.roles.remove(config.pendingRole);
@@ -1325,7 +1542,12 @@ async function handleStaffDecision(interaction) {
         const welcomeEmbed = new EmbedBuilder()
           .setColor('#00FF00')
           .setTitle('🎉 PARABÉNS! WHITELIST APROVADA!')
-          .setDescription('Bem-vindo à Cidade de Deus Roleplay!');
+          .setDescription('**Sua whitelist foi aprovada! Bem-vindo à Cidade de Deus Roleplay!**')
+          .addFields(
+            { name: '🌆 Cidade de Deus', value: 'Sua jornada começa agora!' },
+            { name: '📋 Próximos Passos', value: 'Você já pode acessar todos os canais.' }
+          )
+          .setFooter({ text: 'Divirta-se e respeite as regras!' });
         
         await ticketChannel.send({ content: `${targetMember.user}`, embeds: [welcomeEmbed] });
         
@@ -1345,11 +1567,23 @@ async function handleStaffDecision(interaction) {
       const dmEmbed = new EmbedBuilder()
         .setColor('#00FF00')
         .setTitle('🎉 WHITELIST APROVADA!')
-        .setDescription('Parabéns! Sua whitelist foi aprovada!');
+        .setDescription('**Parabéns! Sua whitelist foi aprovada!**')
+        .setFooter({ text: 'Bem-vindo à família C.D.D!' });
       
       await targetMember.send({ embeds: [dmEmbed] });
     } catch (error) {
       console.error('Erro ao enviar DM:', error);
+    }
+    
+    // Log de aprovação
+    const logChannel = await client.channels.fetch(config.whitelistLog);
+    if (logChannel) {
+      const logEmbed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('✅ Whitelist Aprovada')
+        .setDescription(`${targetMember.user.tag} foi aprovado por ${interaction.user.tag}`)
+        .setTimestamp();
+      await logChannel.send({ embeds: [logEmbed] });
     }
     
   } catch (error) {
@@ -1372,6 +1606,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticketChannelId = activeTickets.get(targetUserId);
       
       statistics.rejected++;
+      statistics.pending = activeTickets.size - 1;
       
       try {
         await targetMember.roles.remove(config.pendingRole);
@@ -1402,8 +1637,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const rejectEmbed = new EmbedBuilder()
             .setColor('#FF0000')
             .setTitle('❌ WHITELIST REPROVADA')
-            .setDescription('Infelizmente sua whitelist não foi aprovada.')
-            .addFields({ name: '📝 Motivo', value: reason });
+            .setDescription('**Infelizmente sua whitelist não foi aprovada.**')
+            .addFields(
+              { name: '📝 Motivo', value: reason },
+              { name: '🔄 Refazer', value: 'Use `/whitelist` após 1 hora.' }
+            )
+            .setFooter({ text: 'Não desanime! Estude mais e tente novamente.' });
           
           await ticketChannel.send({ content: `${targetMember.user}`, embeds: [rejectEmbed] });
           
@@ -1413,6 +1652,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               activeTickets.delete(targetUserId);
               whitelistSessions.delete(targetUserId);
               cooldowns.set(targetUserId, Date.now() + 3600000);
+              setTimeout(() => cooldowns.delete(targetUserId), 3600000);
             } catch (error) {
               console.error('Erro ao deletar canal:', error);
             }
@@ -1424,8 +1664,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const dmEmbed = new EmbedBuilder()
           .setColor('#FF0000')
           .setTitle('❌ WHITELIST REPROVADA')
-          .setDescription('Sua whitelist foi reprovada.')
-          .addFields({ name: '📝 Motivo', value: reason });
+          .setDescription('**Sua whitelist foi reprovada.**')
+          .addFields(
+            { name: '📝 Motivo', value: reason },
+            { name: '🔄 Próximos Passos', value: 'Você pode tentar novamente após 1 hora.' }
+          )
+          .setFooter({ text: 'Estude as regras antes de reaplicar!' });
         
         await targetMember.send({ embeds: [dmEmbed] });
       } catch (error) {
@@ -1433,41 +1677,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       
       await interaction.reply({
-        content: '✅ Whitelist reprovada com sucesso.',
+        embeds: [new EmbedBuilder().setColor('#00FF00').setTitle('✅ Whitelist Reprovada').setDescription(`Whitelist de ${targetMember.user.tag} foi reprovada.`)],
         flags: MessageFlags.Ephemeral
       });
       
+      // Log de reprovação
+      const logChannel = await client.channels.fetch(config.whitelistLog);
+      if (logChannel) {
+        const logEmbed = new EmbedBuilder()
+          .setColor('#FF0000')
+          .setTitle('❌ Whitelist Reprovada')
+          .setDescription(`${targetMember.user.tag} foi reprovado por ${interaction.user.tag}`)
+          .addFields({ name: 'Motivo', value: reason })
+          .setTimestamp();
+        await logChannel.send({ embeds: [logEmbed] });
+      }
+      
     } catch (error) {
       console.error('Erro na reprovação:', error);
-      await interaction.reply({
-        content: '❌ Erro ao reprovar.',
-        flags: MessageFlags.Ephemeral
-      });
+      await interaction.reply({ content: '❌ Erro ao reprovar.', flags: MessageFlags.Ephemeral });
     }
   }
 });
-
-// ============================================
-// FUNÇÕES UTILITÁRIAS
-// ============================================
-async function handleError(interaction, error) {
-  console.error('Erro tratado:', error);
-  
-  const errorMessage = {
-    content: '❌ Ocorreu um erro ao processar sua solicitação.',
-    flags: MessageFlags.Ephemeral
-  };
-  
-  try {
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply(errorMessage);
-    } else {
-      await interaction.followUp(errorMessage);
-    }
-  } catch (e) {
-    console.error('Erro ao enviar mensagem de erro:', e);
-  }
-}
 
 // ============================================
 // INICIAR BOT
@@ -1477,11 +1708,30 @@ client.login(config.token).catch(error => {
   process.exit(1);
 });
 
+// ============================================
+// EXPORTAÇÕES
+// ============================================
+module.exports = { client, config, activeTickets, whitelistSessions, statistics };
+
 console.log(`
-╔══════════════════════════════════════════════════════════╗
-║         🤖 BOT WHITELIST C.D.D - CIDADE DE DEUS RP       ║
-║                    Sistema Profissional v2.0             ║
-║         ✅ Discord.js v14                                ║
-║         ✅ Sistema Corrigido e Otimizado                 ║
-╚══════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║         🤖 BOT WHITELIST C.D.D - CIDADE DE DEUS RP v3.0          ║
+║                    SISTEMA COMPLETO FINAL                        ║
+║                                                                  ║
+║         ✅ Discord.js v14                                        ║
+║         ✅ Painel de Whitelist Automático                        ║
+║         ✅ Sistema de Tickets                                    ║
+║         ✅ Formulário 3 Etapas                                   ║
+║         ✅ Aprovação/Reprovação STAFF                            ║
+║         ✅ Logs Completos                                        ║
+║         ✅ Comandos Slash e Prefix                               ║
+║         ✅ Mensagens Automáticas                                 ║
+║         ✅ Estatísticas em Tempo Real                            ║
+║         ✅ Totalmente Configurável via .env                      ║
+║                                                                  ║
+║         🌆 Cidade de Deus Roleplay                              ║
+║         📋 Pronto para Produção                                  ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
 `);
