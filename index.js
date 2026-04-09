@@ -562,10 +562,10 @@ async function handleSelectMenu(interaction) {
     case 'server_info':
       const infoEmbed = new EmbedBuilder()
         .setColor('#4169E1')
-        .setTitle('🌆 CIDADE DE DEUS ROLEPLAY')
-        .setDescription('**O maior servidor de Roleplay do Brasil!**')
+        .setTitle('🌆 Cidade de Deus RP')
+        .setDescription('**O melhor servidor de Roleplay**')
         .addFields(
-          { name: '👑 Owner', value: `<@${config.ownerId}>`, inline: true },
+          { name: '🛠 Criador do Sistema', value: `<@${config.ownerId}>`, inline: true },
           { name: '👥 Membros', value: `${interaction.guild.memberCount}`, inline: true },
           { name: '📅 Criado em', value: `<t:${Math.floor(interaction.guild.createdTimestamp / 1000)}:D>`, inline: true },
           { name: '🎮 Sistema', value: 'Whitelist Obrigatória', inline: true },
