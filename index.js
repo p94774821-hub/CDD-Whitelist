@@ -358,7 +358,7 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
     // SELECT MENU PRINCIPAL
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId('whitelist_main_menu')
-      .setPlaceholder('🔽 Selecione uma opção para continuar...')
+      .setPlaceholder('Cidade deDeus| WhiteList')
       .addOptions(
         new StringSelectMenuOptionBuilder()
           .setLabel('📝 Iniciar Whitelist')
@@ -709,7 +709,7 @@ async function handleWhitelistCommand(interaction) {
       return interaction.editReply({ content: '❌ Categoria não configurada.' });
     }
     
-    const channelName = `🎫 • whitelist •${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const channelName = `🎫 • whitelist •ㅤ${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     
     const channel = await guild.channels.create({
       name: channelName,
@@ -878,7 +878,7 @@ async function handleCloseCommand(interaction) {
   
   const channel = interaction.channel;
   
-  if (!channel.name.startsWith('🎫 • whitelist •')) {
+  if (!channel.name.startsWith('🎫 • whitelist •ㅤ')) {
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Canal Inválido')],
       flags: MessageFlags.Ephemeral
@@ -986,7 +986,7 @@ async function handleCleanCommand(interaction) {
   await safeDeferReply(interaction);
   
   const category = await interaction.guild.channels.fetch(config.categoryId);
-  const channels = category.children.cache.filter(c => c.name.startsWith('🎫-whitelist-'));
+  const channels = category.children.cache.filter(c => c.name.startsWith('🎫 • whitelist •ㅤ'));
   
   let deleted = 0;
   for (const channel of channels.values()) {
