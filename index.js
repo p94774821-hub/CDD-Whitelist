@@ -203,7 +203,7 @@ client.once(Events.ClientReady, async () => {
     const activities = [
       { name: '🌆 Cidade de Deus RP', type: 3 },
       { name: `${activeTickets.size} whitelists ativas`, type: 3 },
-      { name: '/whitelist para começar', type: 2 },
+      { name: '𝙼𝚊𝚍𝚎 𝚋𝚢 𝚈𝟸𝚔_𝙽𝚊𝚝', type: 2 },
       { name: `🏆 ${statistics.approved} aprovados`, type: 3 }
     ];
     const activity = activities[Math.floor(Math.random() * activities.length)];
