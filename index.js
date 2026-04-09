@@ -358,7 +358,7 @@ Este processo garante que todos os membros estejam alinhados com nossas regras e
     // SELECT MENU PRINCIPAL
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId('whitelist_main_menu')
-      .setPlaceholder('Cidade deDeus| WhiteList')
+      .setPlaceholder('Cidade de Deus | WhiteList')
       .addOptions(
         new StringSelectMenuOptionBuilder()
           .setLabel('📝 Iniciar Whitelist')
