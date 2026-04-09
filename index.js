@@ -709,7 +709,7 @@ async function handleWhitelistCommand(interaction) {
       return interaction.editReply({ content: '❌ Categoria não configurada.' });
     }
     
-    const channelName = `🎫 • whitelist •ㅤ${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const channelName = `🎫・whitelist・${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     
     const channel = await guild.channels.create({
       name: channelName,
@@ -878,7 +878,7 @@ async function handleCloseCommand(interaction) {
   
   const channel = interaction.channel;
   
-  if (!channel.name.startsWith('🎫 • whitelist •ㅤ')) {
+  if (!channel.name.startsWith('🎫・whitelist・')) {
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Canal Inválido')],
       flags: MessageFlags.Ephemeral
@@ -986,7 +986,7 @@ async function handleCleanCommand(interaction) {
   await safeDeferReply(interaction);
   
   const category = await interaction.guild.channels.fetch(config.categoryId);
-  const channels = category.children.cache.filter(c => c.name.startsWith('🎫 • whitelist •ㅤ'));
+  const channels = category.children.cache.filter(c => c.name.startsWith('🎫・whitelist・'));
   
   let deleted = 0;
   for (const channel of channels.values()) {
